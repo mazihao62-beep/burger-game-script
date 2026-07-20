@@ -1,4 +1,4 @@
-print("[Burger v2.14] 加载...")
+print("[Burger v2.15] 加载...")
 
 local P = game:GetService("Players")
 local WS = game:GetService("Workspace")
@@ -29,9 +29,9 @@ pcall(function()
 end)
 if MeleeEvent and PickupEvent and DropEvent then
     remotesReady = true
-    print("[v2.14] 远程OK")
+    print("[v2.15] 远程OK")
 else
-    warn("[v2.14] 远程缺失")
+    warn("[v2.15] 远程缺失")
 end
 
 for _, g in ipairs(C:GetChildren()) do
@@ -56,7 +56,7 @@ for i = 1, 6 do
     wait(1.5)
 end
 if not loaded then return end
-print("[v2.14] WindUI OK")
+print("[v2.15] WindUI OK")
 
 local S = {
     KillNPC = false,
@@ -86,11 +86,19 @@ local function mKW(n, l)
     return false
 end
 
+-- v2.15: 先搜Character(已装备)再搜Backpack
 local function gT(kw)
+    local c = LP.Character
+    if c then
+        for _, t in ipairs(c:GetChildren()) do
+            if t:IsA("Tool") and mKW(t.Name, kw) then return t end
+        end
+    end
     local bp = LP:FindFirstChild("Backpack")
-    if not bp then return nil end
-    for _, t in ipairs(bp:GetChildren()) do
-        if t:IsA("Tool") and mKW(t.Name, kw) then return t end
+    if bp then
+        for _, t in ipairs(bp:GetChildren()) do
+            if t:IsA("Tool") and mKW(t.Name, kw) then return t end
+        end
     end
     return nil
 end
@@ -99,12 +107,11 @@ local function eq(t)
     if not t then return false end
     local c = LP.Character
     if not c then return false end
+    if t.Parent == c then return true end
     local h = c:FindFirstChildOfClass("Humanoid")
     if not h then return false end
-    if t.Parent ~= c then
-        h:EquipTool(t)
-        wait(0.15)
-    end
+    h:EquipTool(t)
+    wait(0.15)
     return true
 end
 
@@ -300,32 +307,61 @@ local function dK()
     end
 end
 
--- === 粉碎 ===
+-- === 粉碎 (v2.15: 去掉pcall吞错 + 打印错误) ===
 local function dG()
+    print("[Grind] 扫描...")
     local grinder = fP("Grinder")
-    if not grinder then return end
+    if not grinder then
+        print("[Grind] 无Grinder")
+        return
+    end
     local bodies = gB()
+    print("[Grind] 尸体=" .. #bodies)
     if #bodies == 0 then return end
     local body = bodies[1]
     local c = LP.Character
     if not c then return end
     local hrp = c:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
-    print("[Grind] " .. body.Name)
-    if remotesReady and PickupEvent and DropEvent then
-        local bp = gPP(body)
-        if bp then
-            hrp.CFrame = bp.CFrame * CFrame.new(0, 0, 2)
-            wait(0.2)
-        end
-        pcall(function() PickupEvent:FireServer(body) end)
-        print("[Grind] Pickup")
-        wait(0.5)
-        hrp.CFrame = grinder.CFrame * CFrame.new(0, 0, 2.5)
-        wait(0.3)
-        pcall(function() DropEvent:FireServer(body, grinder.Position) end)
-        print("[Grind] Drop")
+    print("[Grind] 目标:" .. body.Name .. " FullPath:" .. body:GetFullName())
+
+    if not remotesReady or not PickupEvent then
+        print("[Grind] 远程不可用")
+        return
     end
+
+    local bp = gPP(body)
+    if bp then
+        hrp.CFrame = bp.CFrame * CFrame.new(0, 0, 2)
+        wait(0.3)
+        print("[Grind] 传送完成")
+    else
+        print("[Grind] 警告: 无BasePart")
+    end
+
+    local ok1, err1 = pcall(function()
+        print("[Grind] PickupItem:FireServer(" .. body:GetFullName() .. ")")
+        PickupEvent:FireServer(body)
+    end)
+    if not ok1 then
+        print("[Grind] Pickup ERR:" .. tostring(err1))
+        return
+    end
+    print("[Grind] Pickup OK")
+    wait(0.5)
+
+    hrp.CFrame = grinder.CFrame * CFrame.new(0, 0, 2.5)
+    wait(0.3)
+
+    local ok2, err2 = pcall(function()
+        print("[Grind] DropItem:FireServer(" .. body:GetFullName() .. "," .. tostring(grinder.Position) .. ")")
+        DropEvent:FireServer(body, grinder.Position)
+    end)
+    if not ok2 then
+        print("[Grind] Drop ERR:" .. tostring(err2))
+        return
+    end
+    print("[Grind] Drop OK")
 end
 
 -- === 收钱 ===
@@ -701,11 +737,11 @@ local function mW()
 
     -- Tab 6
     local t6 = WN:Tab({ Title = "关于", Icon = "solar:info-square-bold" })
-    t6:Paragraph({ Title = "汉堡自动脚本 v2.14" })
+    t6:Paragraph({ Title = "汉堡自动脚本 v2.15" })
     t6:Divider()
     t6:Paragraph({ Title = "作者", Desc = "b站英吉利超入_" })
     t6:Paragraph({ Title = "使用", Desc = IM and "手机:点击悬浮按钮" or "PC: RightShift打开菜单" })
-    t6:Paragraph({ Title = "v2.14", Desc = "GetDescendants(GAMEFOLDERS) | 杀NPC/粉碎/收钱" })
+    t6:Paragraph({ Title = "v2.15", Desc = "武器搜Character+Backpack | 粉碎完整日志" })
 
     UIS.InputBegan:Connect(function(input, gpe)
         if gpe or input.UserInputType ~= Enum.UserInputType.Keyboard then return end
@@ -723,17 +759,17 @@ local PP = false
 pcall(function() WI:SetTheme("Dark") end)
 S.ParticleColor = tc("Dark")
 WI:Popup({
-    Title = "汉堡自动脚本 v2.14",
-    Content = "GetDescendants(GAMEFOLDERS) | 杀NPC/粉碎/收钱",
+    Title = "汉堡自动脚本 v2.15",
+    Content = "武器搜Character+背包 | 粉碎详细日志",
     Buttons = { { Title = "确认加载", Callback = function() PP = true end, Variant = "Primary" } }
 })
 while not PP do wait(0.1) end
 
 spawn(function()
     local npcP, bodyP, moneyP = mW()
-    print("[v2.14] 主循环启动!")
+    print("[v2.15] 主循环启动!")
     WI:Notify({
-        Title = "汉堡 v2.14",
+        Title = "汉堡 v2.15",
         Content = "远程:" .. (remotesReady and "OK" or "MISS"),
         Duration = 3,
         Icon = "solar:bell-bold"
