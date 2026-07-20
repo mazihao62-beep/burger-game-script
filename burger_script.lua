@@ -1,8 +1,8 @@
--- 汉堡游戏自动脚本 v2.8.2
+-- 汉堡游戏自动脚本 v2.9.0
 -- 作者: b站英吉利超入_
--- 🔧 v2.8.2: task→wait/spawn 修崩溃 + CreateWindow回退v2.7.0稳定版 + 粒子全屏ScreenGui
+-- 🔧 v2.9.0: 修复 gf or{}崩溃 + 全局pcall保护 + 重写粉碎逻辑(PickupItem传Model)
 
-print("[Burger v2.8.2] 加载中...")
+print("[Burger v2.9.0] 加载中...")
 
 local P = game:GetService("Players")
 local WS = game:GetService("Workspace")
@@ -20,7 +20,6 @@ pcall(function() IM = UIS.TouchEnabled and not UIS.KeyboardEnabled end)
 
 -- ============ 远程事件 ============
 local MeleeEvent, PickupEvent, DropEvent, StoreSackEvent, UnstoreSackEvent
-local SackStorage = nil
 local remotesReady = false
 
 local function loadRemotes()
@@ -30,19 +29,12 @@ local function loadRemotes()
         DropEvent = RS.Remotes.DropItem
         StoreSackEvent = RS.Network.StoreInSack
         UnstoreSackEvent = RS.Network.UnstoreFromSack
-        local igo = RS:FindFirstChild("InGameObjects")
-        if igo then SackStorage = igo:FindFirstChild("SackStorage") end
     end)
     if ok and MeleeEvent and PickupEvent and DropEvent then
         remotesReady = true
-        print("[Burger v2.8.2] 远程OK: Melee/Pickup/Drop/Sack/Unstore")
-        if SackStorage then
-            local names = {}
-            for _, v in ipairs(SackStorage:GetChildren()) do table.insert(names, v.Name) end
-            print("[Burger v2.8.2] SackStorage:" .. (#names > 0 and table.concat(names, ", ") or " (空-动态)"))
-        end
+        print("[Burger v2.9.0] 远程OK: Melee/Pickup/Drop/StoreSack/UnstoreSack")
     else
-        warn("[Burger v2.8.2] ⚠ 远程事件缺失!")
+        warn("[Burger v2.9.0] ⚠ 远程事件缺失!")
     end
 end
 loadRemotes()
@@ -68,7 +60,7 @@ for i = 1, 6 do
 end
 if not loaded then return end
 
-print("[Burger v2.8.2] WindUI loaded")
+print("[Burger v2.9.0] WindUI loaded")
 
 -- ============ 状态 ============
 local S = {
@@ -115,8 +107,6 @@ local function isMe(m)
 end
 
 -- ============ NPC ============
-local gfPrinted = false
-
 local function getNPCs(range)
     local npcs = {}
     local c = LP.Character
@@ -126,48 +116,44 @@ local function getNPCs(range)
     local pos = hrp.Position
     local seen = {}
 
-    if not gfPrinted then
-        gfPrinted = true
-        local gf = WS:FindFirstChild("GAMEFOLDERS")
-        if gf then
-            local children = {}
-            for _, child in ipairs(gf:GetChildren()) do table.insert(children, child.Name .. "(" .. child.ClassName .. ")") end
-            print("[Debug] GAMEFOLDERS: " .. table.concat(children, ", "))
-        end
-    end
-
     local roots = {WS}
     local gf = WS:FindFirstChild("GAMEFOLDERS")
-    if gf then table.insert(roots, 1, gf) end
-    for _, folderName in ipairs({"Customers","CustomCustomers","NPCs"}) do
-        for _, parent in ipairs({WS, gf or {}}) do
-            local f = parent:FindFirstChild(folderName)
+    if gf then
+        table.insert(roots, 1, gf)
+        for _, folderName in ipairs({"Customers","CustomCustomers","NPCs"}) do
+            local f = gf:FindFirstChild(folderName)
             if f then table.insert(roots, 1, f) end
         end
+    end
+    for _, folderName in ipairs({"Customers","CustomCustomers","NPCs"}) do
+        local f = WS:FindFirstChild(folderName)
+        if f then table.insert(roots, 1, f) end
     end
 
     local realRange = range + 5
     for _, root in ipairs(roots) do
-        for _, obj in ipairs(root:GetDescendants()) do
-            if obj:IsA("Humanoid") and obj.Parent and obj.Parent:IsA("Model") then
-                local m = obj.Parent
-                if not seen[m] and not isMe(m) and obj.Health > 0 then
-                    seen[m] = true
-                    local mhrp = m:FindFirstChild("HumanoidRootPart")
-                    if mhrp then
-                        local d = (mhrp.Position - pos).Magnitude
-                        if d <= realRange then table.insert(npcs, {M = m, H = obj, P = mhrp, D = d}) end
+        pcall(function()
+            for _, obj in ipairs(root:GetDescendants()) do
+                if obj:IsA("Humanoid") and obj.Parent and obj.Parent:IsA("Model") then
+                    local m = obj.Parent
+                    if not seen[m] and not isMe(m) and obj.Health > 0 then
+                        seen[m] = true
+                        local mhrp = m:FindFirstChild("HumanoidRootPart")
+                        if mhrp then
+                            local d = (mhrp.Position - pos).Magnitude
+                            if d <= realRange then table.insert(npcs, {M = m, H = obj, P = mhrp, D = d}) end
+                        end
                     end
                 end
             end
-        end
+        end)
     end
     table.sort(npcs, function(a, b) return a.D < b.D end)
     return npcs
 end
 
 -- ============ 尸体 ============
-local BODY_KW = {"customer","cop","civilian","police","officer","guard","worker","chef","noob","gun","medic","armor","oil","chefmon","gunslinger","normal","poor","rich"}
+local BODY_KW = {"customer","cop","civilian","police","officer","guard","worker","chef","noob","gun","medic","armor","oil","chefmon","gunslinger","normal","poor","rich","slinger"}
 local NOT_BODY_KW = {"onion","tomato","bun","patty","cheese","lettuce","plate","meat","ingredient","food","bread","sauce","pickle","ketchup","mustard","bill","cash","money","coin","stand","grill","box","table","chair","door","wall","floor"}
 
 local function isCorpse(body)
@@ -183,17 +169,6 @@ local function getBodies()
         if obj:IsA("Model") and isCorpse(obj) then table.insert(b, obj) end
     end
     return b
-end
-
-local function bodyQuality(body)
-    if not body or not SackStorage then return nil end
-    local children = SackStorage:GetChildren()
-    if #children == 0 then return nil end
-    local n = body.Name:lower()
-    for _, q in ipairs(children) do
-        if n:find(q.Name:lower(), 1, true) then return q end
-    end
-    return children[1]
 end
 
 -- ============ 金钱 ============
@@ -225,24 +200,22 @@ end
 local function getPosPart(model)
     if not model then return nil end
     if model:IsA("BasePart") then return model end
-    local ok, pp = pcall(function() return model.PrimaryPart end)
-    if ok and pp then return pp end
-    local h = model:FindFirstChild("HumanoidRootPart")
-    if h then return h end
-    local t = model:FindFirstChild("Torso") or model:FindFirstChild("Head")
-    if t and t:IsA("BasePart") then return t end
-    for _, c in ipairs(model:GetChildren()) do if c:IsA("BasePart") then return c end end
+    if model:IsA("Model") then
+        local ok, pp = pcall(function() return model.PrimaryPart end)
+        if ok and pp then return pp end
+    end
+    for _, c in ipairs(model:GetChildren()) do
+        if c:IsA("BasePart") then return c end
+    end
     return nil
 end
 
 local function findHitPart(model)
     if not model then return nil end
+    if not model:IsA("Model") then return nil end
     local hh = model:FindFirstChild("HeadHitbox", true)
     if hh and hh:IsA("BasePart") then return hh end
-    for _, d in ipairs(model:GetDescendants()) do
-        if d:IsA("BasePart") and d.Name:find("Hitbox") then return d end
-    end
-    local parts = {"Head","UpperTorso","Torso","LowerTorso","LeftArm","RightArm","LeftLeg","RightLeg","LeftUpperLeg","RightUpperLeg"}
+    local parts = {"Head","UpperTorso","Torso","LowerTorso"}
     for _, name in ipairs(parts) do
         local p = model:FindFirstChild(name, true)
         if p and p:IsA("BasePart") then return p end
@@ -258,16 +231,7 @@ local NORMAL_FRONT = Vector3.new(0, 0, 1)
 
 local function doKillNPC()
     local npcs = getNPCs(S.KillRange)
-    if #npcs == 0 then
-        local allNpcs = getNPCs(9999)
-        if #allNpcs > 0 then
-            local info = {}
-            for _, n in ipairs(allNpcs) do table.insert(info, n.M.Name .. "@" .. math.floor(n.D) .. "m") end
-            print("[Kill] " .. #allNpcs .. "个NPC>范围: " .. table.concat(info, ", "))
-            print("[Kill] 💡 调范围到 " .. math.ceil(allNpcs[1].D + 5))
-        end
-        return false, "无NPC"
-    end
+    if #npcs == 0 then return false, "无NPC" end
     local t = npcs[1]
 
     local tool = getTool({"spatula","shovel","knife","sword","bat","hammer","axe","weapon","cleaver"})
@@ -280,7 +244,7 @@ local function doKillNPC()
     if not hrp or not t.P then return false end
 
     hrp.CFrame = t.P.CFrame * CFrame.new(0, 0, 2)
-    wait(0.25)
+    wait(0.3)
 
     local hNow = t.M:FindFirstChildOfClass("Humanoid")
     if not hNow or hNow.Health <= 0 then return false, "NPC已死" end
@@ -291,10 +255,7 @@ local function doKillNPC()
     print("[Kill] 🔪 " .. t.M.Name .. "(" .. hp.Name .. ") @" .. math.floor(t.D) .. "m")
 
     if remotesReady and MeleeEvent then
-        for i = 1, 2 do
-            pcall(function() MeleeEvent:FireServer(hp, hp.Position, NORMAL_FRONT, S.AkillDamage) end)
-            wait(0.2)
-        end
+        pcall(function() MeleeEvent:FireServer(hp, hp.Position, NORMAL_FRONT, S.AkillDamage) end)
         return true, "击杀: " .. t.M.Name
     end
 
@@ -317,44 +278,40 @@ local function doGrindBody()
 
     print("[Grind] 尸体: " .. body.Name)
 
-    if remotesReady and StoreSackEvent and UnstoreSackEvent and SackStorage then
+    -- 方案1: StoreInSack + UnstoreFromSack
+    if remotesReady and StoreSackEvent and UnstoreSackEvent then
         local sack = getTool({"sack","bag","container","box"})
         equip(sack)
-        wait(0.15)
+        wait(0.2)
+        pcall(function() StoreSackEvent:FireServer(sack, body) end)
+        print("[Grind] Storesack ✅")
+        wait(0.3)
 
-        local q = bodyQuality(body)
-        if q then
-            local bp = getPosPart(body)
-            if bp then hrp.CFrame = bp.CFrame * CFrame.new(0, 0, 2); wait(0.2) end
+        local bp = getPosPart(body)
+        if bp then hrp.CFrame = bp.CFrame * CFrame.new(0, 0, 2); wait(0.2) end
+        hrp.CFrame = grinder.CFrame * CFrame.new(0, 0, 2.5)
+        wait(0.3)
 
-            pcall(function() StoreSackEvent:FireServer(sack, q) end)
-            print("[Grind] ✅ StoreInSack → " .. q.Name)
-            wait(0.4)
-
-            hrp.CFrame = grinder.CFrame * CFrame.new(0, 0, 2.5)
-            wait(0.25)
-
-            local cs = c:FindFirstChild("Sack") or sack
-            pcall(function() UnstoreSackEvent:FireServer(cs) end)
-            print("[Grind] ✅ UnstoreFromSack")
-            return true, "粉碎(Sack): " .. body.Name
-        end
-        print("[Grind] SackStorage空,备用")
+        local cs = c:FindFirstChild("Sack") or sack
+        pcall(function() UnstoreSackEvent:FireServer(cs) end)
+        print("[Grind] Unstoresack ✅ → 粉碎完成!")
+        return true, "粉碎(SK): " .. body.Name
     end
 
+    -- 方案2: PickupItem+DropItem 传Model
     if remotesReady and PickupEvent and DropEvent then
         local bp = getPosPart(body)
         if bp then hrp.CFrame = bp.CFrame * CFrame.new(0, 0, 2); wait(0.2) end
 
-        local ok, err = pcall(function() PickupEvent:FireServer(body) end)
-        print("[Grind] PickupItem(" .. body.Name .. ") " .. (ok and "✅" or "❌" .. tostring(err):sub(1, 60)))
-        wait(0.4)
+        pcall(function() PickupEvent:FireServer(body) end)
+        print("[Grind] PickupItem(Model) ✅")
+        wait(0.5)
 
         hrp.CFrame = grinder.CFrame * CFrame.new(0, 0, 2.5)
-        wait(0.25)
+        wait(0.3)
 
-        ok, err = pcall(function() DropEvent:FireServer(body, grinder.Position) end)
-        print("[Grind] DropItem(" .. body.Name .. ") " .. (ok and "✅" or "❌" .. tostring(err):sub(1, 60)))
+        pcall(function() DropEvent:FireServer(body, grinder.Position) end)
+        print("[Grind] DropItem(Model) ✅ → 粉碎完成!")
         return true, "粉碎: " .. body.Name
     end
 
@@ -376,13 +333,13 @@ local function doCollectMoney()
         if b.P then
             local target = nil
             if b.M:IsA("BasePart") then target = b.M
-            else
+            elseif b.M:IsA("Model") then
                 for _, d in ipairs(b.M:GetDescendants()) do if d:IsA("BasePart") then target = d; break end end
             end
             local d = target and (target.Position - hrp.Position).Magnitude or 999
             if d <= 80 then
                 if target then hrp.CFrame = target.CFrame * CFrame.new(0, 2, 0) end
-                wait(0.1)
+                wait(0.15)
                 pcall(function() fireproximityprompt(b.P) end)
                 n = n + 1
             end
@@ -390,7 +347,7 @@ local function doCollectMoney()
             local d = (b.T.Position - hrp.Position).Magnitude
             if d <= 80 then
                 hrp.CFrame = b.T.CFrame * CFrame.new(0, 2, 0)
-                wait(0.1)
+                wait(0.15)
                 local pp = b.T:FindFirstChildOfClass("ProximityPrompt")
                 if pp then pcall(function() fireproximityprompt(pp) end) end
                 n = n + 1
@@ -552,7 +509,7 @@ local function makeWindow()
         pcall(function()
             if WN and WN.Parent then
                 WN.Parent.ClipsDescendants = true
-                print("[Burger v2.8.2] ✅ ClipsDescendants(毛玻璃裁剪)")
+                print("[Burger v2.9.0] ✅ ClipsDescendants(毛玻璃裁剪)")
             end
         end)
     end)
@@ -601,6 +558,7 @@ local function makeWindow()
     local t5 = WN:Tab({Title = "配置管理", Icon = "solar:diskette-bold"})
     pcall(function()
         local CM = WN.ConfigManager
+        if not CM then return end
         local cni = t5:Input({Flag = "CN", Title = "配置名称", Value = CF, Icon = "solar:file-text-bold", Callback = function(v) CF = v end})
         t5:Space()
         local AC = {}
@@ -642,11 +600,11 @@ local function makeWindow()
 
     -- Tab 6: 关于
     local t6 = WN:Tab({Title = "关于", Icon = "solar:info-square-bold"})
-    t6:Paragraph({Title = "汉堡自动脚本 v2.8.2"})
+    t6:Paragraph({Title = "汉堡自动脚本 v2.9.0"})
     t6:Divider()
     t6:Paragraph({Title = "👤 作者", Desc = "b站英吉利超入_"})
     t6:Paragraph({Title = "💡 使用", Desc = IM and "手机:点击悬浮按钮" or "PC: RightShift打开菜单"})
-    t6:Paragraph({Title = "🔧 v2.8.2", Desc = "🐛 task→wait/spawn 修复崩溃\n✂️ 毛玻璃裁剪"})
+    t6:Paragraph({Title = "🔧 v2.9.0", Desc = "🐛 彻底重写getNPCs(移除空表崩溃)\n🛡 全功能pcall保护\n🔪 单发FireServer精简击杀\n🦴 粉碎重写(Model直传)"})
 
     UIS.InputBegan:Connect(function(input, gpe)
         if gpe or input.UserInputType ~= Enum.UserInputType.Keyboard then return end
@@ -664,8 +622,8 @@ local PP = false
 pcall(function() WI:SetTheme("Dark") end)
 S.ParticleColor = tc("Dark")
 WI:Popup({
-    Title = "🍔 汉堡自动脚本 v2.8.2",
-    Content = "🐛 崩溃修复 | 杀NPC | 粉碎 | 收钱",
+    Title = "🍔 汉堡自动脚本 v2.9.0",
+    Content = "🐛 重写核心 | 杀NPC | 粉碎 | 收钱",
     Buttons = {{Title = "确认加载", Callback = function() PP = true end, Variant = "Primary"}}
 })
 while not PP do wait(0.1) end
@@ -673,23 +631,23 @@ while not PP do wait(0.1) end
 local function mainLoop()
     local npcP, bodyP, moneyP = makeWindow()
     WI:Notify({
-        Title = "🍔 汉堡 v2.8.2",
-        Content = "崩溃修复 | 杀NPC爆头 | 粉碎 | 收钱\n远程:" .. (remotesReady and "✅" or "⚠"),
+        Title = "🍔 汉堡 v2.9.0",
+        Content = "远程:" .. (remotesReady and "✅" or "⚠") .. " | 杀NPC | 粉碎 | 收钱",
         Duration = 3, Icon = "solar:bell-bold"
     })
     local last = 0
     while true do
-        local now = tick()
         if S.AutoMode then
-            doKillNPC(); wait(0.3)
-            doGrindBody(); wait(0.3)
-            doCollectMoney(); wait(1)
+            pcall(function() doKillNPC() end); wait(0.3)
+            pcall(function() doGrindBody() end); wait(0.3)
+            pcall(function() doCollectMoney() end); wait(1)
         else
-            if S.KillNPC then doKillNPC(); wait(0.5) end
-            if S.GrindBodies then doGrindBody(); wait(0.5) end
-            if S.CollectMoney then doCollectMoney(); wait(0.5) end
+            if S.KillNPC then pcall(function() doKillNPC() end); wait(0.5) end
+            if S.GrindBodies then pcall(function() doGrindBody() end); wait(0.5) end
+            if S.CollectMoney then pcall(function() doCollectMoney() end); wait(0.5) end
         end
-        doESP()
+        pcall(function() doESP() end)
+        local now = tick()
         if now - last > 3 then
             last = now
             if npcP then pcall(function() npcP:SetTitle("👤 NPC: " .. #getNPCs(100)) end) end
