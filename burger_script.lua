@@ -1,4 +1,4 @@
-print("[Burger v2.26] 加载中...")
+print("[Burger v2.27] 加载中...")
 
 local P = game:GetService("Players")
 local WS = game:GetService("Workspace")
@@ -21,9 +21,9 @@ pcall(function()
 end)
 if MeleeEvent and PickupEvent and DropEvent then
     remotesReady = true
-    print("[v2.26] 远程事件就绪")
+    print("[v2.27] 远程事件就绪")
 else
-    warn("[v2.26] 远程事件缺失")
+    warn("[v2.27] 远程事件缺失")
 end
 
 for _, g in ipairs(C:GetChildren()) do
@@ -37,7 +37,7 @@ end
 
 local WI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
 if not WI then return end
-print("[v2.26] WindUI 加载成功")
+print("[v2.27] WindUI 加载成功")
 
 local S = {
     KillNPC = false,
@@ -225,6 +225,36 @@ local function fP(name)
     return nil
 end
 
+-- 调试SackStorage路径
+local function dSQ()
+    print("--- SackStorage Debug ---")
+    local igo = RS:FindFirstChild("InGameObjects")
+    if igo then
+        print("InGameObjects: 找到, 子对象数=" .. #igo:GetChildren())
+        for _, c in ipairs(igo:GetChildren()) do
+            print("  " .. c.Name .. " (" .. c.ClassName .. ")")
+        end
+        local ss = igo:FindFirstChild("SackStorage")
+        if ss then
+            print("SackStorage: 找到 (" .. ss.ClassName .. "), 子对象数=" .. #ss:GetChildren())
+            for _, c in ipairs(ss:GetChildren()) do
+                print("  " .. c.Name .. " (" .. c.ClassName .. ")")
+            end
+            if #ss:GetChildren() == 0 then
+                print("SackStorage无子对象, 尝试找所有后代:")
+                for _, d in ipairs(ss:GetDescendants()) do
+                    print("  [D] " .. d:GetFullName() .. " (" .. d.ClassName .. ")")
+                end
+            end
+        else
+            print("SackStorage: 未找到!")
+        end
+    else
+        print("InGameObjects: 未找到!")
+    end
+    print("--- SackStorage Debug End ---")
+end
+
 -- 搜索SackStorage品质名称
 local function gSQ()
     local sq = {}
@@ -279,7 +309,7 @@ end
 
 local NF = Vector3.new(0, 0, 1)
 
--- === 杀戮光环 v2.26: 可调节目标数, 无传送 ===
+-- === 杀戮光环 v2.27: 可调节目标数, 无传送 ===
 local function dK()
     if not remotesReady or not MeleeEvent then return end
     local c = LP.Character
@@ -358,6 +388,9 @@ end
 local function dG()
     local grinder = fP("Grinder")
     if not grinder then return end
+
+    -- 调试SackStorage
+    dSQ()
 
     -- 获取SackStorage品质列表
     local sackQualities = gSQ()
@@ -660,10 +693,10 @@ local function mW()
     end)
 
     local t6 = WN:Tab({Title="关于", Icon="solar:info-square-bold"})
-    t6:Paragraph({Title="汉堡脚本 v2.26"})
+    t6:Paragraph({Title="汉堡脚本 v2.27"})
     t6:Divider()
     t6:Paragraph({Title="作者", Desc="bilibili"})
-    t6:Paragraph({Title="v2.26", Desc="中文界面 / 可调目标数 / StoreInSack粉碎 / 取消按钮"})
+    t6:Paragraph({Title="v2.27", Desc="SackStorage调试 / 中文界面 / 可调目标数 / 取消按钮"})
 
     UIS.InputBegan:Connect(function(input, gpe)
         if gpe or input.UserInputType ~= Enum.UserInputType.Keyboard then return end
@@ -681,7 +714,7 @@ local PCancel = false
 pcall(function() WI:SetTheme("Dark") end)
 S.ParticleColor = tc("Dark")
 WI:Popup({
-    Title = "汉堡脚本 v2.26",
+    Title = "汉堡脚本 v2.27",
     Content = "中文界面 / 可调目标数(1-10) / StoreInSack粉碎",
     Buttons = {
         {Title="加载", Callback=function() PP=true end, Variant="Primary"},
@@ -689,11 +722,11 @@ WI:Popup({
     }
 })
 while not PP and not PCancel do wait(0.1) end
-if PCancel then print("[v2.26] 已取消加载"); return end
+if PCancel then print("[v2.27] 已取消加载"); return end
 
 spawn(function()
     local npcP, bodyP, moneyP = mW()
-    print("[v2.26] 主循环开始")
+    print("[v2.27] 主循环开始")
     local last = 0
     while true do
         if S.AutoMode then
