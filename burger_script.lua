@@ -1,9 +1,8 @@
--- 汉堡游戏自动脚本 v2.8.1
+-- 汉堡游戏自动脚本 v2.8.2
 -- 作者: b站英吉利超入_
--- ❌ 移除做汉堡功能
--- 🔧 粒子: 全屏ScreenGui (对齐WindUI模板v6.7方案)
--- 🔧 毛玻璃溢出修复: ClipsDescendants
--- 🔧 v2.8.1: 回退CreateWindow参数(防崩溃) + 透明回退WN:ToggleTransparency + 配置管理全pcall保护
+-- 🔧 v2.8.2: task→wait/spawn 修崩溃 + CreateWindow回退v2.7.0稳定版 + 粒子全屏ScreenGui
+
+print("[Burger v2.8.2] 加载中...")
 
 local P = game:GetService("Players")
 local WS = game:GetService("Workspace")
@@ -13,7 +12,7 @@ local CS = game:GetService("CollectionService")
 local C = game:GetService("CoreGui")
 
 local LP = nil
-for i = 1, 50 do LP = P.LocalPlayer; if LP then break end; task.wait(0.1) end
+for i = 1, 50 do LP = P.LocalPlayer; if LP then break end; wait(0.1) end
 if not LP then return end
 
 local IM = false
@@ -36,14 +35,14 @@ local function loadRemotes()
     end)
     if ok and MeleeEvent and PickupEvent and DropEvent then
         remotesReady = true
-        print("[Burger v2.8.1] 远程OK: Melee/Pickup/Drop/Sack/Unstore")
+        print("[Burger v2.8.2] 远程OK: Melee/Pickup/Drop/Sack/Unstore")
         if SackStorage then
             local names = {}
             for _, v in ipairs(SackStorage:GetChildren()) do table.insert(names, v.Name) end
-            print("[Burger v2.8.1] SackStorage:" .. (#names > 0 and table.concat(names, ", ") or " (空-动态)"))
+            print("[Burger v2.8.2] SackStorage:" .. (#names > 0 and table.concat(names, ", ") or " (空-动态)"))
         end
     else
-        warn("[Burger v2.8.1] ⚠ 远程事件缺失!")
+        warn("[Burger v2.8.2] ⚠ 远程事件缺失!")
     end
 end
 loadRemotes()
@@ -65,9 +64,11 @@ for i = 1, 6 do
         return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
     end)
     if ok and rv then WI = rv; loaded = true; break end
-    task.wait(1.5)
+    wait(1.5)
 end
 if not loaded then return end
+
+print("[Burger v2.8.2] WindUI loaded")
 
 -- ============ 状态 ============
 local S = {
@@ -104,7 +105,7 @@ local function equip(tool)
     if not c then return false end
     local h = c:FindFirstChildOfClass("Humanoid")
     if not h then return false end
-    if tool.Parent ~= c then h:EquipTool(tool); task.wait(0.15) end
+    if tool.Parent ~= c then h:EquipTool(tool); wait(0.15) end
     return true
 end
 
@@ -279,7 +280,7 @@ local function doKillNPC()
     if not hrp or not t.P then return false end
 
     hrp.CFrame = t.P.CFrame * CFrame.new(0, 0, 2)
-    task.wait(0.25)
+    wait(0.25)
 
     local hNow = t.M:FindFirstChildOfClass("Humanoid")
     if not hNow or hNow.Health <= 0 then return false, "NPC已死" end
@@ -292,7 +293,7 @@ local function doKillNPC()
     if remotesReady and MeleeEvent then
         for i = 1, 2 do
             pcall(function() MeleeEvent:FireServer(hp, hp.Position, NORMAL_FRONT, S.AkillDamage) end)
-            task.wait(0.2)
+            wait(0.2)
         end
         return true, "击杀: " .. t.M.Name
     end
@@ -319,19 +320,19 @@ local function doGrindBody()
     if remotesReady and StoreSackEvent and UnstoreSackEvent and SackStorage then
         local sack = getTool({"sack","bag","container","box"})
         equip(sack)
-        task.wait(0.15)
+        wait(0.15)
 
         local q = bodyQuality(body)
         if q then
             local bp = getPosPart(body)
-            if bp then hrp.CFrame = bp.CFrame * CFrame.new(0, 0, 2); task.wait(0.2) end
+            if bp then hrp.CFrame = bp.CFrame * CFrame.new(0, 0, 2); wait(0.2) end
 
             pcall(function() StoreSackEvent:FireServer(sack, q) end)
             print("[Grind] ✅ StoreInSack → " .. q.Name)
-            task.wait(0.4)
+            wait(0.4)
 
             hrp.CFrame = grinder.CFrame * CFrame.new(0, 0, 2.5)
-            task.wait(0.25)
+            wait(0.25)
 
             local cs = c:FindFirstChild("Sack") or sack
             pcall(function() UnstoreSackEvent:FireServer(cs) end)
@@ -343,14 +344,14 @@ local function doGrindBody()
 
     if remotesReady and PickupEvent and DropEvent then
         local bp = getPosPart(body)
-        if bp then hrp.CFrame = bp.CFrame * CFrame.new(0, 0, 2); task.wait(0.2) end
+        if bp then hrp.CFrame = bp.CFrame * CFrame.new(0, 0, 2); wait(0.2) end
 
         local ok, err = pcall(function() PickupEvent:FireServer(body) end)
         print("[Grind] PickupItem(" .. body.Name .. ") " .. (ok and "✅" or "❌" .. tostring(err):sub(1, 60)))
-        task.wait(0.4)
+        wait(0.4)
 
         hrp.CFrame = grinder.CFrame * CFrame.new(0, 0, 2.5)
-        task.wait(0.25)
+        wait(0.25)
 
         ok, err = pcall(function() DropEvent:FireServer(body, grinder.Position) end)
         print("[Grind] DropItem(" .. body.Name .. ") " .. (ok and "✅" or "❌" .. tostring(err):sub(1, 60)))
@@ -381,7 +382,7 @@ local function doCollectMoney()
             local d = target and (target.Position - hrp.Position).Magnitude or 999
             if d <= 80 then
                 if target then hrp.CFrame = target.CFrame * CFrame.new(0, 2, 0) end
-                task.wait(0.1)
+                wait(0.1)
                 pcall(function() fireproximityprompt(b.P) end)
                 n = n + 1
             end
@@ -389,7 +390,7 @@ local function doCollectMoney()
             local d = (b.T.Position - hrp.Position).Magnitude
             if d <= 80 then
                 hrp.CFrame = b.T.CFrame * CFrame.new(0, 2, 0)
-                task.wait(0.1)
+                wait(0.1)
                 local pp = b.T:FindFirstChildOfClass("ProximityPrompt")
                 if pp then pcall(function() fireproximityprompt(pp) end) end
                 n = n + 1
@@ -407,7 +408,7 @@ local function startParticles()
     if PC then pcall(function() local p = PC.Parent; if p then p:Destroy() end end); PC = nil end
     PS = {}
 
-    task.wait(0.3)
+    wait(0.3)
     local sg = Instance.new("ScreenGui")
     sg.Name = "BurgerParticle_SG"
     sg.ResetOnSpawn = false; sg.DisplayOrder = 999999; sg.IgnoreGuiInset = true; sg.Parent = C
@@ -430,7 +431,7 @@ local function startParticles()
     end
 
     PR = true
-    task.spawn(function()
+    spawn(function()
         local t = 0
         while PR and PC do
             t = t + 0.03
@@ -451,7 +452,7 @@ local function startParticles()
                     end
                 end
             end)
-            task.wait(0.03)
+            wait(0.03)
         end
     end)
 end
@@ -527,40 +528,36 @@ end
 
 -- ============ UI ============
 local function makeWindow()
-    local ok, w = pcall(function()
-        return WI:CreateWindow({
-            Title = "🍔 汉堡自动脚本", Author = "b站英吉利超入_", Icon = "solar:hamburger-bold",
-            Size = UDim2.fromOffset(750, 520), ToggleKey = Enum.KeyCode.RightShift,
-            Folder = "burger-script", Acrylic = true,
-            Resizable = false, ScrollBarEnabled = true, HideSearchBar = true,
-            OnClose = function()
-                stopParticles()
-                S.KillNPC = false; S.GrindBodies = false
-                S.CollectMoney = false; S.AutoMode = false; S.EspEnabled = false
-                cAll()
-                for _, ct in pairs(CT) do
-                    if ct and type(ct.Set) == "function" then pcall(function() ct:Set(false) end) end
-                end
-            end,
-            OnOpen = function()
-                if S.Particles then startParticles() end
+    WN = WI:CreateWindow({
+        Title = "🍔 汉堡自动脚本", Author = "b站英吉利超入_", Icon = "solar:hamburger-bold",
+        Size = UDim2.fromOffset(750, 520), ToggleKey = Enum.KeyCode.RightShift,
+        Folder = "burger-script", Acrylic = true,
+        Resizable = false, ScrollBarEnabled = true, HideSearchBar = true,
+        OnClose = function()
+            stopParticles()
+            S.KillNPC = false; S.GrindBodies = false
+            S.CollectMoney = false; S.AutoMode = false; S.EspEnabled = false
+            cAll()
+            for _, ct in pairs(CT) do
+                if ct and type(ct.Set) == "function" then pcall(function() ct:Set(false) end) end
             end
-        })
-    end)
-    if not ok or not w then return nil, nil, nil end
-    WN = w
+        end,
+        OnOpen = function()
+            if S.Particles then startParticles() end
+        end
+    })
 
-    task.spawn(function()
-        task.wait(0.8)
+    spawn(function()
+        wait(0.8)
         pcall(function()
             if WN and WN.Parent then
                 WN.Parent.ClipsDescendants = true
-                print("[Burger v2.8.1] ✅ ClipsDescendants(毛玻璃裁剪)")
+                print("[Burger v2.8.2] ✅ ClipsDescendants(毛玻璃裁剪)")
             end
         end)
     end)
 
-    task.spawn(function() task.wait(0.5); pcall(function() WN:SetToggleKey(Enum.KeyCode.RightShift) end) end)
+    spawn(function() wait(0.5); pcall(function() WN:SetToggleKey(Enum.KeyCode.RightShift) end) end)
 
     -- Tab 1: 主控面板
     local t1 = WN:Tab({Title = "主控面板", Icon = "solar:slider-vertical-bold"})
@@ -600,7 +597,7 @@ local function makeWindow()
     local bodyP = t4:Paragraph({Title = "🦴 尸体: 0"})
     local moneyP = t4:Paragraph({Title = "💰 金钱: 0"})
 
-    -- Tab 5: 配置管理 (全pcall保护)
+    -- Tab 5: 配置管理
     local t5 = WN:Tab({Title = "配置管理", Icon = "solar:diskette-bold"})
     pcall(function()
         local CM = WN.ConfigManager
@@ -640,16 +637,16 @@ local function makeWindow()
                     pcall(function() ACD:Refresh(CM:AllConfigs()) end)
                 end
             end})
-        task.spawn(function() task.wait(1); pcall(function() CM:CreateConfig("default", true) end) end)
+        spawn(function() wait(1); pcall(function() CM:CreateConfig("default", true) end) end)
     end)
 
     -- Tab 6: 关于
     local t6 = WN:Tab({Title = "关于", Icon = "solar:info-square-bold"})
-    t6:Paragraph({Title = "汉堡自动脚本 v2.8.1"})
+    t6:Paragraph({Title = "汉堡自动脚本 v2.8.2"})
     t6:Divider()
     t6:Paragraph({Title = "👤 作者", Desc = "b站英吉利超入_"})
     t6:Paragraph({Title = "💡 使用", Desc = IM and "手机:点击悬浮按钮" or "PC: RightShift打开菜单"})
-    t6:Paragraph({Title = "🔧 v2.8.1", Desc = "+ 配置管理\n✂️ 毛玻璃裁剪\n🐛 崩溃修复"})
+    t6:Paragraph({Title = "🔧 v2.8.2", Desc = "🐛 task→wait/spawn 修复崩溃\n✂️ 毛玻璃裁剪"})
 
     UIS.InputBegan:Connect(function(input, gpe)
         if gpe or input.UserInputType ~= Enum.UserInputType.Keyboard then return end
@@ -667,31 +664,30 @@ local PP = false
 pcall(function() WI:SetTheme("Dark") end)
 S.ParticleColor = tc("Dark")
 WI:Popup({
-    Title = "🍔 汉堡自动脚本 v2.8.1",
-    Content = "❌ 已移除做汉堡\n🌀 粒子全屏重写\n✂️ 毛玻璃裁剪修复\n💾 配置管理\n\n杀NPC | 粉碎 | 收钱",
+    Title = "🍔 汉堡自动脚本 v2.8.2",
+    Content = "🐛 崩溃修复 | 杀NPC | 粉碎 | 收钱",
     Buttons = {{Title = "确认加载", Callback = function() PP = true end, Variant = "Primary"}}
 })
-while not PP do task.wait(0.1) end
+while not PP do wait(0.1) end
 
 local function mainLoop()
     local npcP, bodyP, moneyP = makeWindow()
-    if not WN then return end
     WI:Notify({
-        Title = "🍔 汉堡 v2.8.1",
-        Content = "配置保存 | 崩溃修复 | 玻璃裁剪\n远程:" .. (remotesReady and "✅" or "⚠"),
+        Title = "🍔 汉堡 v2.8.2",
+        Content = "崩溃修复 | 杀NPC爆头 | 粉碎 | 收钱\n远程:" .. (remotesReady and "✅" or "⚠"),
         Duration = 3, Icon = "solar:bell-bold"
     })
     local last = 0
     while true do
         local now = tick()
         if S.AutoMode then
-            doKillNPC(); task.wait(0.3)
-            doGrindBody(); task.wait(0.3)
-            doCollectMoney(); task.wait(1)
+            doKillNPC(); wait(0.3)
+            doGrindBody(); wait(0.3)
+            doCollectMoney(); wait(1)
         else
-            if S.KillNPC then doKillNPC(); task.wait(0.5) end
-            if S.GrindBodies then doGrindBody(); task.wait(0.5) end
-            if S.CollectMoney then doCollectMoney(); task.wait(0.5) end
+            if S.KillNPC then doKillNPC(); wait(0.5) end
+            if S.GrindBodies then doGrindBody(); wait(0.5) end
+            if S.CollectMoney then doCollectMoney(); wait(0.5) end
         end
         doESP()
         if now - last > 3 then
@@ -700,8 +696,8 @@ local function mainLoop()
             if bodyP then pcall(function() bodyP:SetTitle("🦴 尸体: " .. #getBodies()) end) end
             if moneyP then pcall(function() moneyP:SetTitle("💰 金钱: " .. #getMoney()) end) end
         end
-        task.wait(2)
+        wait(2)
     end
 end
 
-task.spawn(mainLoop)
+spawn(mainLoop)
