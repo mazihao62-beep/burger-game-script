@@ -1,6 +1,6 @@
--- 汉堡游戏自动脚本 v2.0
+-- 汉堡游戏自动脚本 v2.1
 -- 作者: b站英吉利超入_
--- 通用词汇匹配，不硬编码NPC名字
+-- 全杀模式: 所有NPC都攻击，不分类
 
 -- ===== 初始化 =====
 local P = game:GetService("Players")
@@ -18,7 +18,6 @@ if not LP then return end
 local IM = false
 pcall(function() IM = UIS.TouchEnabled and not UIS.KeyboardEnabled end)
 
--- 清理残留
 local function clean()
     for _, g in ipairs(C:GetChildren()) do
         if g:IsA("ScreenGui") then
@@ -31,7 +30,6 @@ local function clean()
 end
 clean()
 
--- ===== 加载 WindUI =====
 local WI, loaded = nil, false
 for i = 1, 6 do
     local ok, rv = pcall(function()
@@ -49,7 +47,6 @@ if not loaded then
     return
 end
 
--- ===== 设置表 =====
 local S = {
     KillNPC = false,
     GrindBodies = false,
@@ -69,9 +66,8 @@ local KB = { Window = "RightShift" }
 local WN, CT = nil, {}
 local PH, PC, PS = nil, nil, {}
 
--- ===== 通用关键词表 =====
-local CUSTOMER_KEYWORDS = {"customer", "civilian", "guest", "visitor", "citizen", "patron", "buyer", "shopper", "orderer", "normal", "poor", "rich", "vip", "hungry", "waiting"}
-local ENEMY_KEYWORDS = {"enemy", "hostile", "criminal", "bandit", "thief", "robber", "gang", "raider", "zombie", "monster", "alien", "killer", "attacker", "assassin"}
+-- ===== 关键词表 =====
+local POLICE_KEYWORDS = {"police", "cop", "officer", "sheriff", "fbi", "swat", "riot", "shield", "security", "guard", "federal", "agent", "patrol", "detective", "trooper"}
 local FOOD_KEYWORDS = {"meat", "patty", "bun", "bread", "cheese", "lettuce", "tomato", "bacon", "onion", "pickle", "sauce", "fries", "drink", "soda", "shake", "plate", "burger", "sandwich", "top", "bottom", "ingredient", "raw", "cooked"}
 local MONEY_KEYWORDS = {"money", "cash", "coin", "gold", "dollar", "cent", "buck", "credit", "profit", "revenue", "income", "bill", "note"}
 local GRINDER_KEYWORDS = {"grind", "grinder", "shred", "shredder", "mill", "crush", "crusher", "process", "processor", "blend", "blender"}
@@ -115,13 +111,9 @@ local function isPlayerChar(m)
     return false
 end
 
+-- 全杀模式: 所有NPC都是"Bad"
 local function classifyNPC(npc)
-    local name = npc.Name or ""
-    if findKeyword(name, ENEMY_KEYWORDS) then return "Bad" end
-    if CS:HasTag(npc, "Enemy") or CS:HasTag(npc, "Hostile") then return "Bad" end
-    if findKeyword(name, CUSTOMER_KEYWORDS) then return "Good" end
-    if CS:HasTag(npc, "Customer") or CS:HasTag(npc, "Friendly") then return "Good" end
-    return "Good"
+    return "Bad"
 end
 
 local function getNearbyNPCs(range)
@@ -141,7 +133,7 @@ local function getNearbyNPCs(range)
                 if mhrp and obj.Health > 0 then
                     local dist = (mhrp.Position - pos).Magnitude
                     if dist <= range then
-                        table.insert(npcs, {Model = m, Humanoid = obj, HRP = mhrp, Distance = dist, Type = classifyNPC(m)})
+                        table.insert(npcs, {Model = m, Humanoid = obj, HRP = mhrp, Distance = dist, Type = "Bad"})
                     end
                 end
             end
@@ -208,20 +200,6 @@ local function getGrinder()
     for _, obj in ipairs(wp:GetDescendants()) do
         if obj:IsA("Model") and findKeyword(obj.Name, GRINDER_KEYWORDS) then
             return obj
-        end
-    end
-    return nil
-end
-
-local function getCashRegister()
-    local wp = WS:FindFirstChild("WORLDPARTS")
-    if not wp then return nil end
-    for _, obj in ipairs(wp:GetDescendants()) do
-        if obj:IsA("Model") then
-            local n = obj.Name:lower()
-            if n:find("cash") or n:find("register") or n:find("till") or n:find("checkout") then
-                return obj
-            end
         end
     end
     return nil
@@ -338,21 +316,21 @@ local function makeESP(target, tag)
     pcall(function() bb.Parent = target end)
     local tl = Instance.new("TextLabel")
     tl.Size = UDim2.new(1, 0, 1, 0)
-    tl.Text = tag == "Good" and "👨 顾客" or "💀 敌人"
-    tl.TextColor3 = tag == "Good" and Color3.fromRGB(0, 255, 80) or Color3.fromRGB(255, 40, 40)
+    tl.Text = "💀 NPC"
+    tl.TextColor3 = Color3.fromRGB(255, 40, 40)
     tl.BackgroundTransparency = 0.7
     tl.BackgroundColor3 = Color3.new(0, 0, 0)
     tl.TextScaled = true
     tl.Font = Enum.Font.SourceSansBold
     tl.Parent = bb
     local hl = Instance.new("Highlight")
-    hl.FillColor = tag == "Good" and Color3.fromRGB(0, 255, 80) or Color3.fromRGB(255, 40, 40)
+    hl.FillColor = Color3.fromRGB(255, 40, 40)
     hl.OutlineColor = Color3.fromRGB(255, 255, 255)
     hl.FillTransparency = 0.3
     hl.OutlineTransparency = 0
     hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
     pcall(function() hl.Parent = target end)
-    EO[target] = {BB = bb, HL = hl, Tag = tag}
+    EO[target] = {BB = bb, HL = hl}
 end
 
 local function clearESP(target)
@@ -383,8 +361,7 @@ local function doESPScan()
                 if dist > S.EspRange then
                     clearESP(m)
                 elseif dist <= S.EspRange and obj.Health > 0 then
-                    local nt = classifyNPC(m)
-                    makeESP(m, nt)
+                    makeESP(m, "Bad")
                 end
             end
         end
@@ -560,12 +537,12 @@ local function makeWindow()
     t5:Button({Title = "🗑️ 删除", Icon = "solar:trash-bin-trash-bold", Justify = "Center", Color = Color3.fromHex("#ff3040"), Callback = function() end})
 
     local t6 = WN:Tab({Title = "关于", Icon = "solar:info-square-bold"})
-    t6:Paragraph({Title = "汉堡自动脚本 v2.0"})
+    t6:Paragraph({Title = "汉堡自动脚本 v2.1"})
     t6:Divider()
     t6:Paragraph({Title = "👤 作者", Desc = "b站英吉利超入_"})
     t6:Divider()
     t6:Paragraph({Title = "💡 使用", Desc = IM and "手机:点击悬浮按钮" or "PC: RightShift打开菜单"})
-    t6:Paragraph({Title = "⚠️ 通用关键词匹配", Desc = "不硬编码NPC名字，自动识别顾客/敌人"})
+    t6:Paragraph({Title = "⚠️ 全杀模式", Desc = "所有NPC都是目标，不分类"})
 
     UIS.InputBegan:Connect(function(input, gpe)
         if gpe or input.UserInputType ~= Enum.UserInputType.Keyboard then return end
@@ -583,8 +560,8 @@ local PP = false
 pcall(function() WI:SetTheme("Dark") end)
 S.ParticleColor = getThemeColor("Dark")
 WI:Popup({
-    Title = "🍔 汉堡自动脚本 v2.0",
-    Content = "⚔️ 自动杀死NPC\n🧹 自动粉碎尸体\n🍔 自动做汉堡\n💰 自动收集金钱\n👁 NPC透视\n\n⚠️ 所有功能默认关闭",
+    Title = "🍔 汉堡自动脚本 v2.1",
+    Content = "⚔️ 自动杀死NPC(全杀模式)\n🧹 自动粉碎尸体\n🍔 自动做汉堡\n💰 自动收集金钱\n👁 NPC透视\n\n⚠️ 所有功能默认关闭",
     Buttons = {{Title = "确认加载", Callback = function() PP = true end, Variant = "Primary"}}
 })
 while not PP do task.wait(0.1) end
