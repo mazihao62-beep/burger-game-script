@@ -1,4 +1,4 @@
-print("[Burger v2.25] 加载中...")
+print("[Burger v2.26] 加载中...")
 
 local P = game:GetService("Players")
 local WS = game:GetService("Workspace")
@@ -21,9 +21,9 @@ pcall(function()
 end)
 if MeleeEvent and PickupEvent and DropEvent then
     remotesReady = true
-    print("[v2.25] 远程事件就绪")
+    print("[v2.26] 远程事件就绪")
 else
-    warn("[v2.25] 远程事件缺失")
+    warn("[v2.26] 远程事件缺失")
 end
 
 for _, g in ipairs(C:GetChildren()) do
@@ -37,7 +37,7 @@ end
 
 local WI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
 if not WI then return end
-print("[v2.25] WindUI 加载成功")
+print("[v2.26] WindUI 加载成功")
 
 local S = {
     KillNPC = false,
@@ -279,7 +279,7 @@ end
 
 local NF = Vector3.new(0, 0, 1)
 
--- === 杀戮光环 v2.25: 可调节目标数, 无传送 ===
+-- === 杀戮光环 v2.26: 可调节目标数, 无传送 ===
 local function dK()
     if not remotesReady or not MeleeEvent then return end
     local c = LP.Character
@@ -660,10 +660,10 @@ local function mW()
     end)
 
     local t6 = WN:Tab({Title="关于", Icon="solar:info-square-bold"})
-    t6:Paragraph({Title="汉堡脚本 v2.25"})
+    t6:Paragraph({Title="汉堡脚本 v2.26"})
     t6:Divider()
     t6:Paragraph({Title="作者", Desc="bilibili"})
-    t6:Paragraph({Title="v2.25", Desc="中文界面 / 可调目标数 / StoreInSack粉碎"})
+    t6:Paragraph({Title="v2.26", Desc="中文界面 / 可调目标数 / StoreInSack粉碎 / 取消按钮"})
 
     UIS.InputBegan:Connect(function(input, gpe)
         if gpe or input.UserInputType ~= Enum.UserInputType.Keyboard then return end
@@ -677,18 +677,23 @@ end
 
 -- === 主程序 ===
 local PP = false
+local PCancel = false
 pcall(function() WI:SetTheme("Dark") end)
 S.ParticleColor = tc("Dark")
 WI:Popup({
-    Title = "汉堡脚本 v2.25",
+    Title = "汉堡脚本 v2.26",
     Content = "中文界面 / 可调目标数(1-10) / StoreInSack粉碎",
-    Buttons = {{Title="加载", Callback=function() PP=true end, Variant="Primary"}}
+    Buttons = {
+        {Title="加载", Callback=function() PP=true end, Variant="Primary"},
+        {Title="不加载", Callback=function() PCancel=true end, Variant="Danger"}
+    }
 })
-while not PP do wait(0.1) end
+while not PP and not PCancel do wait(0.1) end
+if PCancel then print("[v2.26] 已取消加载"); return end
 
 spawn(function()
     local npcP, bodyP, moneyP = mW()
-    print("[v2.25] 主循环开始")
+    print("[v2.26] 主循环开始")
     local last = 0
     while true do
         if S.AutoMode then
