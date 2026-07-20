@@ -80,7 +80,7 @@ local function isMe(m)
     return false
 end
 
--- === NPC (重写：先搜专用文件夹，搜不到才扫整个Workspace) ===
+-- === NPC ===
 local function gN(range)
     local npcs = {}
     local c = LP.Character
@@ -91,7 +91,6 @@ local function gN(range)
     local seen = {}
     local rr = range + 5
 
-    -- 方式1: GAMEFOLDERS → Customers / NPCs
     local gf = WS:FindFirstChild("GAMEFOLDERS")
     if gf then
         for _, fn in ipairs({"Customers", "NPCs"}) do
@@ -103,10 +102,7 @@ local function gN(range)
                         local mp = m:FindFirstChild("HumanoidRootPart")
                         if h and mp and h.Health > 0 then
                             local d = (mp.Position - pos).Magnitude
-                            if d <= rr then
-                                seen[m] = true
-                                table.insert(npcs, {M=m, H=h, P=mp, D=d})
-                            end
+                            if d <= rr then seen[m] = true; table.insert(npcs, {M=m, H=h, P=mp, D=d}) end
                         end
                     end
                 end
@@ -114,7 +110,6 @@ local function gN(range)
         end
     end
 
-    -- 方式2: Workspace根下 Customers / NPCs
     for _, fn in ipairs({"Customers", "NPCs"}) do
         local f = WS:FindFirstChild(fn)
         if f then
@@ -124,17 +119,13 @@ local function gN(range)
                     local mp = m:FindFirstChild("HumanoidRootPart")
                     if h and mp and h.Health > 0 then
                         local d = (mp.Position - pos).Magnitude
-                        if d <= rr then
-                            seen[m] = true
-                            table.insert(npcs, {M=m, H=h, P=mp, D=d})
-                        end
+                        if d <= rr then seen[m] = true; table.insert(npcs, {M=m, H=h, P=mp, D=d}) end
                     end
                 end
             end
         end
     end
 
-    -- 方式3（兜底）: 扫整个Workspace，但只搜直接子级Model
     if #npcs == 0 then
         for _, m in ipairs(WS:GetChildren()) do
             if m:IsA("Model") and not seen[m] and not isMe(m) then
@@ -142,10 +133,7 @@ local function gN(range)
                 local mp = m:FindFirstChild("HumanoidRootPart")
                 if h and mp and h.Health > 0 then
                     local d = (mp.Position - pos).Magnitude
-                    if d <= rr then
-                        seen[m] = true
-                        table.insert(npcs, {M=m, H=h, P=mp, D=d})
-                    end
+                    if d <= rr then seen[m] = true; table.insert(npcs, {M=m, H=h, P=mp, D=d}) end
                 end
             end
         end
@@ -227,9 +215,7 @@ local function fHP(model)
     return nil
 end
 
--- === 杀NPC (加强日志) ===
-local NF = Vector3.new(0, 0, 1)
-
+-- === 🔪 杀NPC (v2.12: 3连击 + 动态法线) ===
 local function dK()
     print("[Kill] START")
     local npcs = gN(S.KillRange)
@@ -247,10 +233,10 @@ local function dK()
     local c = LP.Character
     if not c then return false end
     local hrp = c:FindFirstChild("HumanoidRootPart")
-    if not hrp or not t.P then print("[Kill] FAIL: hrp=" .. tostring(hrp) .. " tp=" .. tostring(t.P)); return false end
+    if not hrp or not t.P then print("[Kill] FAIL: no HRP"); return false end
 
     hrp.CFrame = t.P.CFrame * CFrame.new(0, 0, 2)
-    print("[Kill] 已传送")
+    print("[Kill] 已传送到NPC面前")
     wait(0.3)
 
     local hNow = t.M:FindFirstChildOfClass("Humanoid")
@@ -258,46 +244,51 @@ local function dK()
 
     local hp = fHP(t.M)
     if not hp then hp = t.P end
-    print("[Kill] HitPart: " .. hp.Name .. " Pos: " .. tostring(hp.Position))
+    print("[Kill] HitPart: " .. hp.Name .. " FullPath: " .. hp:GetFullName())
 
-    if remotesReady and MeleeEvent then
-        pcall(function()
-            MeleeEvent:FireServer(hp, hp.Position, NF, S.AkillDamage)
+    -- 动态法线: 玩家→NPC方向 (模仿Cobalt的格式)
+    local npcPos = hp.Position
+    local myPos = hrp.Position
+    local dir = (npcPos - myPos).Unit
+    print("[Kill] 法线=(" .. string.format("%.3f",dir.X) .. "," .. string.format("%.3f",dir.Y) .. "," .. string.format("%.3f",dir.Z) .. ")")
+
+    if not remotesReady or not MeleeEvent then print("[Kill] 远程不可用"); return false end
+
+    -- 3连击!
+    for i = 1, 3 do
+        local ok, err = pcall(function()
+            MeleeEvent:FireServer(hp, npcPos, dir, S.AkillDamage)
         end)
-        print("[Kill] FireServer DONE")
-        return true, "击杀:" .. t.M.Name
+        print("[Kill] FS#" .. i .. " " .. (ok and "OK" or ("ERR:" .. tostring(err))))
+        if i < 3 then wait(0.1) end
     end
-    print("[Kill] 远程不可用")
-    return false, "无远程"
+
+    return true, "击杀:" .. t.M.Name
 end
 
 -- === 粉碎 ===
 local function dG()
-    print("[Grind] START")
     local grinder = fP("Grinder")
-    if not grinder then print("[Grind] 无Grinder"); return false, "无Grinder" end
+    if not grinder then return false end
     local bodies = gB()
-    print("[Grind] 尸体: " .. #bodies)
-    if #bodies == 0 then return false, "无尸体" end
+    if #bodies == 0 then return false end
     local body = bodies[1]
     local c = LP.Character
     if not c then return false end
     local hrp = c:FindFirstChild("HumanoidRootPart")
     if not hrp then return false end
     print("[Grind] " .. body.Name)
-
     if remotesReady and PickupEvent and DropEvent then
         local bp = gPP(body)
         if bp then hrp.CFrame = bp.CFrame * CFrame.new(0, 0, 2); wait(0.2) end
         pcall(function() PickupEvent:FireServer(body) end)
-        print("[Grind] Pickup OK")
-        wait(0.5)
+        print("[Grind] Pickup OK"); wait(0.5)
         hrp.CFrame = grinder.CFrame * CFrame.new(0, 0, 2.5); wait(0.3)
         pcall(function() DropEvent:FireServer(body, grinder.Position) end)
         print("[Grind] Drop OK")
-        return true, "粉碎:" .. body.Name
+        return true
     end
-    return false, "粉碎失败"
+    return false
 end
 
 -- === 收钱 ===
@@ -307,7 +298,7 @@ local function dC()
     local hrp = c:FindFirstChild("HumanoidRootPart")
     if not hrp then return false end
     local bills = gM()
-    if #bills == 0 then return false, "无钱" end
+    if #bills == 0 then return false end
     local n = 0
     for _, b in ipairs(bills) do
         if b.P then
@@ -336,16 +327,15 @@ local function dC()
         end
         if n >= 30 then break end
     end
-    if n > 0 then return true, "收钱:" .. n end
-    return false, "无钱"
+    if n > 0 then return true end
+    return false
 end
 
 -- === 粒子 ===
 local function sP()
     if PR then return end
     if PC then pcall(function() local p = PC.Parent; if p then p:Destroy() end end); PC = nil end
-    PS = {}
-    wait(0.3)
+    PS = {}; wait(0.3)
     local sg = Instance.new("ScreenGui"); sg.Name = "BurgerP_SG"; sg.ResetOnSpawn = false
     sg.DisplayOrder = 999999; sg.IgnoreGuiInset = true; sg.Parent = C
     PC = Instance.new("Frame"); PC.Size = UDim2.new(1,0,1,0); PC.BackgroundTransparency = 1
@@ -443,7 +433,7 @@ local function mW()
     spawn(function() wait(0.5); pcall(function() WN:SetToggleKey(Enum.KeyCode.RightShift) end) end)
 
     local t1 = WN:Tab({Title="主控面板", Icon="solar:slider-vertical-bold"})
-    CT.KillNPC = t1:Toggle({Flag="KillNPC", Title="自动杀死NPC(爆头)", Value=false, Callback=function(v) print("[Toggle] KillNPC = " .. tostring(v)); S.KillNPC = v end})
+    CT.KillNPC = t1:Toggle({Flag="KillNPC", Title="自动杀死NPC(3连击)", Value=false, Callback=function(v) S.KillNPC = v end})
     CT.GrindBodies = t1:Toggle({Flag="GrindBodies", Title="自动粉碎尸体", Value=false, Callback=function(v) S.GrindBodies = v end})
     CT.CollectMoney = t1:Toggle({Flag="CollectMoney", Title="自动收集金钱", Value=false, Callback=function(v) S.CollectMoney = v end})
     CT.AutoMode = t1:Toggle({Flag="AutoMode", Title="全自动模式", Value=false, Callback=function(v) S.AutoMode = v end})
@@ -467,7 +457,9 @@ local function mW()
     t3:Dropdown({Flag="Theme", Title="选择主题", Values=tns, Value="Dark", Callback=function(v) pcall(function() WI:SetTheme(v) end); S.ParticleColor = tc(v) end})
 
     local t4 = WN:Tab({Title="信息统计", Icon="solar:chart-bold"})
-    local npcP = t4:Paragraph({Title="NPC: 0"}); local bodyP = t4:Paragraph({Title="尸体: 0"}); local moneyP = t4:Paragraph({Title="金钱: 0"})
+    local npcP = t4:Paragraph({Title="NPC: 0"})
+    local bodyP = t4:Paragraph({Title="尸体: 0"})
+    local moneyP = t4:Paragraph({Title="金钱: 0"})
 
     local t5 = WN:Tab({Title="配置管理", Icon="solar:diskette-bold"})
     pcall(function()
@@ -497,9 +489,10 @@ local function mW()
 
     local t6 = WN:Tab({Title="关于", Icon="solar:info-square-bold"})
     t6:Paragraph({Title="汉堡自动脚本 v2.12"})
-    t6:Divider(); t6:Paragraph({Title="作者", Desc="b站英吉利超入_"})
+    t6:Divider()
+    t6:Paragraph({Title="作者", Desc="b站英吉利超入_"})
     t6:Paragraph({Title="使用", Desc=IM and "手机:点击悬浮按钮" or "PC: RightShift打开菜单"})
-    t6:Paragraph({Title="v2.12", Desc="调试版 | 杀NPC | 粉碎 | 收钱"})
+    t6:Paragraph({Title="v2.12", Desc="3连击+动态法线 | 全日志调试"})
 
     UIS.InputBegan:Connect(function(input, gpe)
         if gpe or input.UserInputType ~= Enum.UserInputType.Keyboard then return end
@@ -517,7 +510,7 @@ pcall(function() WI:SetTheme("Dark") end)
 S.ParticleColor = tc("Dark")
 WI:Popup({
     Title = "汉堡自动脚本 v2.12",
-    Content = "调试版 | 杀NPC | 粉碎 | 收钱",
+    Content = "3连击+动态法线 | 全日志调试",
     Buttons = {{Title="确认加载", Callback=function() PP = true end, Variant="Primary"}}
 })
 while not PP do wait(0.1) end
@@ -525,15 +518,17 @@ while not PP do wait(0.1) end
 spawn(function()
     local npcP, bodyP, moneyP = mW()
     print("[v2.12] 主循环启动")
-    WI:Notify({Title="汉堡 v2.12", Content="远程:" .. (remotesReady and "OK" or "MISS"), Duration=3, Icon="solar:bell-bold"})
+    WI:Notify({Title="汉堡 v2.12", Content="远程:" .. (remotesReady and "OK" or "MISS") .. " | 3连击模式", Duration=3, Icon="solar:bell-bold"})
     local last = 0
     while true do
         if S.AutoMode then
-            dK(); wait(0.3); dG(); wait(0.3); dC(); wait(1)
+            pcall(function() dK() end); wait(0.5)
+            pcall(function() dG() end); wait(0.5)
+            pcall(function() dC() end); wait(1)
         else
-            if S.KillNPC then dK(); wait(0.5) end
-            if S.GrindBodies then dG(); wait(0.5) end
-            if S.CollectMoney then dC(); wait(0.5) end
+            if S.KillNPC then pcall(function() dK() end); wait(0.8) end
+            if S.GrindBodies then pcall(function() dG() end); wait(0.8) end
+            if S.CollectMoney then pcall(function() dC() end); wait(0.8) end
         end
         pcall(function() dE() end)
         local now = tick()
