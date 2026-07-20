@@ -1,4 +1,4 @@
-print("[Burger v2.18] loading...")
+print("[Burger v2.19] loading...")
 
 local P = game:GetService("Players")
 local WS = game:GetService("Workspace")
@@ -19,9 +19,9 @@ pcall(function()
 end)
 if MeleeEvent and PickupEvent and DropEvent then
     remotesReady = true
-    print("[v2.18] remotes OK")
+    print("[v2.19] remotes OK")
 else
-    warn("[v2.18] remotes MISS")
+    warn("[v2.19] remotes MISS")
 end
 
 for _, g in ipairs(C:GetChildren()) do
@@ -35,7 +35,7 @@ end
 
 local WI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
 if not WI then return end
-print("[v2.18] WindUI OK")
+print("[v2.19] WindUI OK")
 
 local S = {
     KillNPC = false,
@@ -45,6 +45,7 @@ local S = {
     EspEnabled = false,
     EspRange = 200,
     KillRange = 50,
+    MaxTargets = 5,
     AkillDamage = 26,
     Particles = true,
     Acrylic = true,
@@ -55,8 +56,8 @@ local KB = { Window = "RightShift" }
 local WN, CT = nil, {}
 local PR, PS, PC = false, {}, nil
 
--- Kill aura state
-local killTarget = nil
+-- Kill aura state (multi-target)
+local killTargets = {}
 local npcCache = {}
 local npcCacheTime = 0
 
@@ -157,7 +158,6 @@ local function gN(range)
     return npcs
 end
 
--- Cached NPC scan (for kill aura high-frequency calls)
 local function gNCached(range)
     local now = tick()
     if now - npcCacheTime < 2 and #npcCache > 0 then
@@ -252,59 +252,88 @@ end
 
 local NF = Vector3.new(0, 0, 1)
 
--- === KILL AURA (v2.18) ===
--- No teleport. Lock nearest target, spam FireServer until dead.
+-- ============================================================
+--  KILL AURA v2.19: multi-target (up to 5), no teleport
+-- ============================================================
 local function dK()
-    -- Validate current target
-    if killTarget then
-        local c = LP.Character
-        local hrp = c and c:FindFirstChild("HumanoidRootPart")
-        local h = killTarget.M:FindFirstChildOfClass("Humanoid")
-        local inRange = hrp and killTarget.P and
-            (killTarget.P.Position - hrp.Position).Magnitude <= S.KillRange + 10
-        if not h or h.Health <= 0 or not inRange then
-            killTarget = nil
+    if not remotesReady or not MeleeEvent then return end
+
+    -- 1) Purge dead / out-of-range targets
+    local c = LP.Character
+    if not c then killTargets = {}; return end
+    local hrp = c:FindFirstChild("HumanoidRootPart")
+    if not hrp then killTargets = {}; return end
+    local pos = hrp.Position
+    local rr = S.KillRange + 10
+
+    local alive = {}
+    for _, t in ipairs(killTargets) do
+        if t.P and t.P.Parent == t.M then
+            local hNow = t.M:FindFirstChildOfClass("Humanoid")
+            local d = (t.P.Position - pos).Magnitude
+            if hNow and hNow.Health > 0 and d <= rr then
+                table.insert(alive, t)
+            end
+        end
+    end
+    killTargets = alive
+
+    -- 2) Fill slots (up to MaxTargets = 5)
+    if #killTargets < S.MaxTargets then
+        local existing = {}
+        for _, t in ipairs(killTargets) do existing[t.M] = true end
+        local npcs = gNCached(S.KillRange)
+        for _, npc in ipairs(npcs) do
+            if #killTargets >= S.MaxTargets then break end
+            if not existing[npc.M] then
+                table.insert(killTargets, npc)
+                existing[npc.M] = true
+                print("[Aura] + " .. npc.M.Name .. " @" .. math.floor(npc.D) .. "m  [" .. #killTargets .. "/" .. S.MaxTargets .. "]")
+            end
         end
     end
 
-    -- Pick new target
-    if not killTarget then
-        local npcs = gNCached(S.KillRange)
-        if #npcs == 0 then return end
-        killTarget = npcs[1]
-        print("[Aura] locked: " .. killTarget.M.Name .. " @" .. math.floor(killTarget.D) .. "m")
-    end
+    if #killTargets == 0 then return end
 
-    -- Equip weapon
+    -- 3) Equip weapon once
     local tool = gT({"spatula","shovel","knife","sword","bat","hammer","axe","weapon","cleaver"})
-    if not tool then
-        killTarget = nil
-        return
-    end
+    if not tool then killTargets = {}; return end
     eq(tool)
 
-    -- Hit part (prefer HeadHitbox)
-    local hp = fHP(killTarget.M)
-    if not hp then hp = killTarget.P end
-
-    -- Burst: 3 hits per cycle
-    local hits = 0
-    for i = 1, 3 do
-        local hNow = killTarget.M:FindFirstChildOfClass("Humanoid")
+    -- 4) Fire 2 hits per target (fast cycle)
+    local deadNames = {}
+    for _, t in ipairs(killTargets) do
+        local hNow = t.M:FindFirstChildOfClass("Humanoid")
         if not hNow or hNow.Health <= 0 then
-            print("[Aura] " .. killTarget.M.Name .. " DEAD (" .. hits .. " hits)")
-            killTarget = nil
-            break
+            table.insert(deadNames, t.M.Name)
+        else
+            local hp = fHP(t.M)
+            if not hp then hp = t.P end
+            for _ = 1, 2 do
+                MeleeEvent:FireServer(hp, hp.Position, NF, S.AkillDamage)
+                wait(0.03)
+            end
         end
-        if remotesReady and MeleeEvent then
-            MeleeEvent:FireServer(hp, hp.Position, NF, S.AkillDamage)
-            hits = hits + 1
+    end
+
+    -- 5) Remove dead targets
+    if #deadNames > 0 then
+        local newList = {}
+        for _, t in ipairs(killTargets) do
+            local hNow = t.M:FindFirstChildOfClass("Humanoid")
+            if hNow and hNow.Health > 0 then
+                table.insert(newList, t)
+            end
         end
-        wait(0.06)
+        for _, dn in ipairs(deadNames) do
+            print("[Aura] - " .. dn .. " DEAD")
+        end
+        killTargets = newList
+        print("[Aura] remaining: " .. #killTargets)
     end
 end
 
--- === GRIND (v2.17: PickupItem/DropItem with error print) ===
+-- === GRIND ===
 local function dG()
     local grinder = fP("Grinder")
     if not grinder then return end
@@ -315,29 +344,15 @@ local function dG()
     if not c then return end
     local hrp = c:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
-    print("[Grind] " .. body.Name)
     if remotesReady and PickupEvent and DropEvent then
         local bp = gPP(body)
-        if bp then
-            hrp.CFrame = bp.CFrame * CFrame.new(0, 0, 2)
-            wait(0.2)
-        end
+        if bp then hrp.CFrame = bp.CFrame * CFrame.new(0, 0, 2); wait(0.2) end
         local ok1, err1 = pcall(function() PickupEvent:FireServer(body) end)
-        if ok1 then
-            print("[Grind] Pickup OK")
-        else
-            print("[Grind] Pickup ERR:" .. tostring(err1))
-            return
-        end
+        if not ok1 then print("[Grind] Pickup ERR:" .. tostring(err1)); return end
         wait(0.5)
-        hrp.CFrame = grinder.CFrame * CFrame.new(0, 0, 2.5)
-        wait(0.3)
+        hrp.CFrame = grinder.CFrame * CFrame.new(0, 0, 2.5); wait(0.3)
         local ok2, err2 = pcall(function() DropEvent:FireServer(body, grinder.Position) end)
-        if ok2 then
-            print("[Grind] Drop OK")
-        else
-            print("[Grind] Drop ERR:" .. tostring(err2))
-        end
+        if not ok2 then print("[Grind] Drop ERR:" .. tostring(err2)) end
     end
 end
 
@@ -498,7 +513,7 @@ local function mW()
         ScrollBarEnabled = true, HideSearchBar = true,
         OnClose = function()
             xP() S.KillNPC=false S.GrindBodies=false S.CollectMoney=false
-            S.AutoMode=false S.EspEnabled=false cA() killTarget=nil
+            S.AutoMode=false S.EspEnabled=false cA() killTargets={}
             for _, ct in pairs(CT) do
                 if ct and type(ct.Set) == "function" then pcall(function() ct:Set(false) end) end
             end
@@ -509,7 +524,7 @@ local function mW()
     spawn(function() wait(0.5) pcall(function() WN:SetToggleKey(Enum.KeyCode.RightShift) end) end)
 
     local t1 = WN:Tab({Title="Main", Icon="solar:slider-vertical-bold"})
-    CT.KillNPC = t1:Toggle({Flag="KillNPC", Title="Kill Aura (no tp)", Value=false, Callback=function(v) print("[Toggle] KillNPC="..tostring(v)) S.KillNPC=v if not v then killTarget=nil end end})
+    CT.KillNPC = t1:Toggle({Flag="KillNPC", Title="Kill Aura (multi)", Value=false, Callback=function(v) print("[Toggle] KillNPC="..tostring(v)) S.KillNPC=v if not v then killTargets={} end end})
     CT.GrindBodies = t1:Toggle({Flag="GrindBodies", Title="Auto Grind", Value=false, Callback=function(v) S.GrindBodies=v end})
     CT.CollectMoney = t1:Toggle({Flag="CollectMoney", Title="Auto Collect Money", Value=false, Callback=function(v) S.CollectMoney=v end})
     CT.AutoMode = t1:Toggle({Flag="AutoMode", Title="Full Auto", Value=false, Callback=function(v) S.AutoMode=v end})
@@ -556,68 +571,58 @@ local function mW()
     end)
 
     local t6 = WN:Tab({Title="About", Icon="solar:info-square-bold"})
-    t6:Paragraph({Title="Burger Script v2.18"})
+    t6:Paragraph({Title="Burger Script v2.19"})
     t6:Divider()
     t6:Paragraph({Title="Author", Desc="bilibili"})
-    t6:Paragraph({Title="v2.18", Desc="Kill Aura - no tp, locks target until dead"})
+    t6:Paragraph({Title="v2.19", Desc="Multi-target aura (5x), no tp, 2hits/target/cycle"})
 
     UIS.InputBegan:Connect(function(input, gpe)
         if gpe or input.UserInputType ~= Enum.UserInputType.Keyboard then return end
         local kn = input.KeyCode and input.KeyCode.Name or ""
-        if kn==KB.Kill then S.KillNPC=not S.KillNPC if CT.KillNPC then CT.KillNPC:Set(S.KillNPC) end if not S.KillNPC then killTarget=nil end end
+        if kn==KB.Kill then S.KillNPC=not S.KillNPC if CT.KillNPC then CT.KillNPC:Set(S.KillNPC) end if not S.KillNPC then killTargets={} end end
         if kn==KB.Grind then S.GrindBodies=not S.GrindBodies if CT.GrindBodies then CT.GrindBodies:Set(S.GrindBodies) end end
         if kn==KB.Money then S.CollectMoney=not S.CollectMoney if CT.CollectMoney then CT.CollectMoney:Set(S.CollectMoney) end end
     end)
     return npcP, bodyP, moneyP
 end
 
--- === MAIN LOOP (fast cycle for kill aura) ===
+-- === MAIN LOOP ===
 local PP = false
 pcall(function() WI:SetTheme("Dark") end)
 S.ParticleColor = tc("Dark")
 WI:Popup({
-    Title = "Burger v2.18",
-    Content = "Kill Aura: no teleport, locks target until dead",
+    Title = "Burger v2.19",
+    Content = "Multi-target aura (5 NPCs), no teleport",
     Buttons = {{Title="Load", Callback=function() PP=true end, Variant="Primary"}}
 })
 while not PP do wait(0.1) end
 
 spawn(function()
     local npcP, bodyP, moneyP = mW()
-    print("[v2.18] loop start")
+    print("[v2.19] loop start")
     local last = 0
     while true do
         if S.AutoMode then
-            pcall(function() dK() end)
+            if S.KillNPC then pcall(function() dK() end) end
+            wait(0.08)
+            if S.GrindBodies then pcall(function() dG() end) end
+            wait(0.15)
+            if S.CollectMoney then pcall(function() dC() end) end
             wait(0.2)
-            pcall(function() dG() end)
-            wait(0.2)
-            pcall(function() dC() end)
-            wait(0.3)
         else
-            if S.KillNPC then
-                pcall(function() dK() end)
-                wait(0.2)
-            end
-            if S.GrindBodies then
-                pcall(function() dG() end)
-                wait(0.2)
-            end
-            if S.CollectMoney then
-                pcall(function() dC() end)
-                wait(0.5)
-            end
+            if S.KillNPC then pcall(function() dK() end); wait(0.08) end
+            if S.GrindBodies then pcall(function() dG() end); wait(0.15) end
+            if S.CollectMoney then pcall(function() dC() end); wait(0.3) end
         end
         pcall(function() dE() end)
         local now = tick()
         if now - last > 3 then
             last = now
-            -- Force refresh cache for stats
             npcCacheTime = 0
             if npcP then pcall(function() npcP:SetTitle("NPC:"..#gN(100)) end) end
             if bodyP then pcall(function() bodyP:SetTitle("Bodies:"..#gB()) end) end
             if moneyP then pcall(function() moneyP:SetTitle("Money:"..#gM()) end) end
         end
-        wait(0.3)
+        wait(0.08)
     end
 end)
