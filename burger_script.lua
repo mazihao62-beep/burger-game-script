@@ -1,6 +1,6 @@
--- 汉堡游戏自动脚本 v2.5.2
+-- 汉堡游戏自动脚本 v2.5.3
 -- 作者: b站英吉利超入_
--- 修复: 尸体用StoreInSack(非PickupItem) + SackStorage路径确认
+-- 修复: StoreInSack + UnstoreFromSack完整流程 (Cobalt反编译确认)
 
 local P = game:GetService("Players")
 local WS = game:GetService("Workspace")
@@ -17,7 +17,8 @@ local IM = false
 pcall(function() IM = UIS.TouchEnabled and not UIS.KeyboardEnabled end)
 
 -- ============ 远程事件缓存 ============
-local MeleeEvent, PickupEvent, DropEvent, OrderEvent, StoreSackEvent
+local MeleeEvent, PickupEvent, DropEvent, OrderEvent, StoreSackEvent, UnstoreSackEvent
+local SackStorage = nil  -- RS.InGameObjects.SackStorage["Normal Customer"]等品质
 local remotesReady = false
 
 local function loadRemotes()
@@ -29,12 +30,25 @@ local function loadRemotes()
         DropEvent = Remotes:WaitForChild("DropItem", 5)
         OrderEvent = Network:WaitForChild("LinkPlayerToOrder", 5)
         StoreSackEvent = Network:WaitForChild("StoreInSack", 5)
+        UnstoreSackEvent = Network:WaitForChild("UnstoreFromSack", 5)
+
+        local igo = RS:WaitForChild("InGameObjects", 5)
+        if igo then
+            SackStorage = igo:WaitForChild("SackStorage", 5)
+        end
     end)
-    if ok and MeleeEvent then
+    if ok and MeleeEvent and StoreSackEvent and UnstoreSackEvent then
         remotesReady = true
-        print("[Burger v2.5.2] 就绪: Melee/Pickup/Drop/Order/StoreInSack + 爆头")
+        print("[Burger v2.5.3] 远程就绪: Melee/StoreSack/UnstoreSack/Order + 爆头")
+        if SackStorage then
+            local names = {}
+            for _, v in ipairs(SackStorage:GetChildren()) do
+                table.insert(names, v.Name)
+            end
+            print("[Burger v2.5.3] SackStorage品质: " .. table.concat(names, ", "))
+        end
     else
-        print("[Burger v2.5.2] ⚠ 远程事件加载失败")
+        print("[Burger v2.5.3] ⚠ 远程事件加载失败")
     end
 end
 loadRemotes()
@@ -64,7 +78,7 @@ end
 
 if not loaded then
     local msg = Instance.new("Message")
-    msg.Text = "WindUI 加载失败(已重试6次)"
+    msg.Text = "WindUI 加载失败"
     msg.Parent = workspace
     task.delay(4, function() msg:Destroy() end)
     return
@@ -72,18 +86,9 @@ end
 
 -- ============ 状态 ============
 local S = {
-    KillNPC = false,
-    GrindBodies = false,
-    MakeBurgers = false,
-    CollectMoney = false,
-    AutoMode = false,
-    EspEnabled = false,
-    EspRange = 200,
-    KillRange = 25,
-    AkillDamage = 26,
-    Particles = true,
-    Acrylic = true,
-    Transparent = false,
+    KillNPC = false, GrindBodies = false, MakeBurgers = false, CollectMoney = false,
+    AutoMode = false, EspEnabled = false, EspRange = 200, KillRange = 25,
+    AkillDamage = 26, Particles = true, Acrylic = true, Transparent = false,
     ParticleColor = Color3.fromRGB(80, 170, 255)
 }
 
@@ -109,9 +114,7 @@ local function getBackpackTool(keywords)
     local bp = LP:FindFirstChild("Backpack")
     if not bp then return nil end
     for _, t in ipairs(bp:GetChildren()) do
-        if t:IsA("Tool") then
-            if findKeyword(t.Name, keywords) then return t end
-        end
+        if t:IsA("Tool") then if findKeyword(t.Name, keywords) then return t end end
     end
     return nil
 end
@@ -122,10 +125,7 @@ local function equipTool(tool)
     if not char then return false end
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hum then return false end
-    if tool.Parent ~= char then
-        hum:EquipTool(tool)
-        task.wait(0.1)
-    end
+    if tool.Parent ~= char then hum:EquipTool(tool); task.wait(0.1) end
     return true
 end
 
@@ -149,10 +149,10 @@ local function getNearbyNPCs(range)
     local searchRoots = {}
     local gf = WS:FindFirstChild("GAMEFOLDERS")
     if gf then
-        local npcFolder = gf:FindFirstChild("NPCs")
-        if npcFolder then table.insert(searchRoots, npcFolder) end
-        local cusFolder = gf:FindFirstChild("Customers")
-        if cusFolder then table.insert(searchRoots, cusFolder) end
+        local npcF = gf:FindFirstChild("NPCs")
+        if npcF then table.insert(searchRoots, npcF) end
+        local cusF = gf:FindFirstChild("Customers")
+        if cusF then table.insert(searchRoots, cusF) end
     end
     table.insert(searchRoots, WS)
 
@@ -178,36 +178,31 @@ local function getNearbyNPCs(range)
     return npcs
 end
 
--- ============ 尸体 — RS.InGameObjects.SackStorage + Pickable标签 ============
+-- ============ 尸体 + 品质匹配 (SackStorage["Normal Customer"]等) ============
 local function getBodies()
+    -- 工作区中的Pickable标签尸体 (不在SackStorage里, SackStorage存的是品质条目)
     local bodies = {}
-
-    -- 方式1: SackStorage (确认路径: RS.InGameObjects.SackStorage["Normal Customer"]等)
-    local ok, inGameObjects = pcall(function() return RS:FindFirstChild("InGameObjects") end)
-    if ok and inGameObjects then
-        local sackStorage = inGameObjects:FindFirstChild("SackStorage")
-        if sackStorage then
-            for _, body in ipairs(sackStorage:GetChildren()) do
-                if body:IsA("Model") then
-                    table.insert(bodies, body)
-                end
-            end
-        end
-    end
-
-    -- 方式2: Pickable标签 (兜底)
     for _, obj in ipairs(CS:GetTagged("Pickable")) do
-        if obj:IsA("Model") then
-            local found = false
-            for _, b in ipairs(bodies) do if b == obj then found = true; break end end
-            if not found then table.insert(bodies, obj) end
-        end
+        if obj:IsA("Model") then table.insert(bodies, obj) end
     end
-
     return bodies
 end
 
--- ============ 金钱 (Bill + Cash) ============
+local function getBodyQuality(body)
+    -- 根据尸体名字匹配SackStorage品质条目
+    if not body or not SackStorage then return nil end
+    local name = body.Name:lower()
+    for _, quality in ipairs(SackStorage:GetChildren()) do
+        if name:find(quality.Name:lower(), 1, true) then
+            return quality  -- SackStorage["Normal Customer"]这样的对象
+        end
+    end
+    -- 没匹配到用第一个
+    local first = SackStorage:GetChildren()[1]
+    return first
+end
+
+-- ============ 金钱 ============
 local function getMoneyBills()
     local bills = {}
     local items = WS:FindFirstChild("ITEMS")
@@ -215,9 +210,7 @@ local function getMoneyBills()
         for _, obj in ipairs(items:GetDescendants()) do
             local pp = obj:FindFirstChildOfClass("ProximityPrompt")
             if pp then table.insert(bills, {Model = obj, Prompt = pp}) end
-            if obj:IsA("BasePart") and obj.Name == "Cash" then
-                table.insert(bills, {Part = obj})
-            end
+            if obj:IsA("BasePart") and obj.Name == "Cash" then table.insert(bills, {Part = obj}) end
         end
     end
     for _, obj in ipairs(WS:GetDescendants()) do
@@ -256,9 +249,7 @@ local function getGrill()
     local wp = WS:FindFirstChild("WORLDPARTS")
     if not wp then return nil end
     for _, obj in ipairs(wp:GetDescendants()) do
-        if obj:IsA("Part") and (obj.Name == "GrillHitbox" or obj.Name == "Grill") then
-            return obj
-        end
+        if obj:IsA("Part") and (obj.Name == "GrillHitbox" or obj.Name == "Grill") then return obj end
     end
     return nil
 end
@@ -272,23 +263,21 @@ local function getPrimaryPart(model)
     return nil
 end
 
--- ============ 获取订单 ============
+-- ============ 订单 ============
 local function getActiveOrder()
     local board = WS:FindFirstChild("WORLDPARTS") and WS.WORLDPARTS:FindFirstChild("OrdersBoard")
     if not board then return nil end
     for _, obj in ipairs(board:GetDescendants()) do
         if obj:IsA("BillboardGui") then
             for _, child in ipairs(obj:GetDescendants()) do
-                if child:IsA("TextLabel") and child.Text:find("ORDER") then
-                    return child.Text
-                end
+                if child:IsA("TextLabel") and child.Text:find("ORDER") then return child.Text end
             end
         end
     end
     return nil
 end
 
--- ============ 1. 杀NPC — MeleeHitEvent:FireServer ============
+-- ============ 1. 杀NPC — MeleeHitEvent:FireServer(爆头优先) ============
 local function doKillNPC()
     local npcs = getNearbyNPCs(S.KillRange)
     if #npcs == 0 then return false, "附近没有NPC" end
@@ -306,16 +295,13 @@ local function doKillNPC()
     hrp.CFrame = target.HRP.CFrame * CFrame.new(0, 0, 2.5)
     task.wait(0.15)
 
-    -- 🎯 优先爆头: HeadHitbox (确认路径: GAMEFOLDERS.NPCs.Cop.HeadHitbox)
+    -- 🎯 爆头
     local hitPart = target.HRP
     local headHitbox = target.Model:FindFirstChild("HeadHitbox", true)
-    if headHitbox and headHitbox:IsA("BasePart") then
-        hitPart = headHitbox
+    if headHitbox and headHitbox:IsA("BasePart") then hitPart = headHitbox
     else
         for _, part in ipairs(target.Model:GetDescendants()) do
-            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-                hitPart = part; break
-            end
+            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then hitPart = part; break end
         end
     end
 
@@ -323,34 +309,29 @@ local function doKillNPC()
 
     if remotesReady and MeleeEvent then
         for i = 1, 3 do
-            pcall(function()
-                MeleeEvent:FireServer(hitPart, hitPart.Position, attackNormal, S.AkillDamage)
-            end)
+            pcall(function() MeleeEvent:FireServer(hitPart, hitPart.Position, attackNormal, S.AkillDamage) end)
             task.wait(0.15)
         end
         return true, "击杀: " .. target.Model.Name
     end
 
-    -- 备用: VIM
     pcall(function()
         local VIM = game:GetService("VirtualInputManager")
         for i = 1, 3 do
-            VIM:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-            task.wait(0.05)
-            VIM:SendMouseButtonEvent(0, 0, 0, false, game, 0)
-            task.wait(0.1)
+            VIM:SendMouseButtonEvent(0, 0, 0, true, game, 0); task.wait(0.05)
+            VIM:SendMouseButtonEvent(0, 0, 0, false, game, 0); task.wait(0.1)
         end
     end)
     return true, "击杀(VIM): " .. target.Model.Name
 end
 
--- ============ 2. 粉碎尸体 — StoreInSack(装袋) → DropItem(丢Grinder) ============
+-- ============ 2. 粉碎 — StoreInSack(装袋) → 走到Grinder → UnstoreFromSack(丢出) ============
 local function doGrindBody()
     local grinder = getGrinder()
     if not grinder then return false, "找不到粉碎机" end
 
     local bodies = getBodies()
-    if #bodies == 0 then return false, "附近没有尸体(SackStorage空)" end
+    if #bodies == 0 then return false, "附近没有尸体(Pickable标签)" end
 
     local char = LP.Character
     if not char then return false, "角色未加载" end
@@ -360,28 +341,29 @@ local function doGrindBody()
     local sack = getBackpackTool(TOOL_BAG_KEYWORDS)
     if not sack then return false, "没有麻袋(Sack)" end
 
-    -- 尸体在 SackStorage 里，不需要走过去 — 直接调StoreInSack远程事件
     local body = bodies[1]
 
-    if remotesReady and StoreSackEvent then
+    if remotesReady and StoreSackEvent and UnstoreSackEvent then
         equipTool(sack)
         task.wait(0.15)
 
-        -- 🔑 StoreInSack:FireServer(Sack工具, SackStorage里的尸体Model)
-        local ok = pcall(function()
-            StoreSackEvent:FireServer(sack, body)
-        end)
-        if ok then
+        -- 🔑 品质匹配: 从SackStorage找对应的品质条目
+        local quality = getBodyQuality(body)
+        if quality then
+            -- StoreInSack: backpack.Sack → SackStorage["Normal Customer"]
+            pcall(function() StoreSackEvent:FireServer(sack, quality) end)
             task.wait(0.3)
-            -- 带到Grinder前，用DropItem丢进去
+
+            -- 走到Grinder前
             hrp.CFrame = grinder.CFrame * CFrame.new(0, 0, 3)
             task.wait(0.3)
-            if DropEvent then
-                pcall(function()
-                    DropEvent:FireServer(body, grinder.Position)
-                end)
+
+            -- UnstoreFromSack: Character.Sack → 丢到Grinder里
+            local charSack = char:FindFirstChild("Sack")
+            if charSack then
+                pcall(function() UnstoreSackEvent:FireServer(charSack) end)
             end
-            return true, "粉碎(StoreSack): " .. body.Name
+            return true, "粉碎(StoreSack): " .. body.Name .. " [" .. (quality.Name or "?") .. "]"
         end
     end
 
@@ -389,8 +371,7 @@ local function doGrindBody()
     equipTool(sack); task.wait(0.15)
     pcall(function()
         local VIM = game:GetService("VirtualInputManager")
-        VIM:SendKeyEvent(true, Enum.KeyCode.F, false, game)
-        task.wait(0.1)
+        VIM:SendKeyEvent(true, Enum.KeyCode.F, false, game); task.wait(0.1)
         VIM:SendKeyEvent(false, Enum.KeyCode.F, false, game)
     end)
     task.wait(0.3)
@@ -398,8 +379,7 @@ local function doGrindBody()
     task.wait(0.3)
     pcall(function()
         local VIM = game:GetService("VirtualInputManager")
-        VIM:SendKeyEvent(true, Enum.KeyCode.F, false, game)
-        task.wait(0.1)
+        VIM:SendKeyEvent(true, Enum.KeyCode.F, false, game); task.wait(0.1)
         VIM:SendKeyEvent(false, Enum.KeyCode.F, false, game)
     end)
     return true, "粉碎(F键): " .. body.Name
@@ -443,7 +423,7 @@ local function doCollectMoney()
     return false, "附近没有可收集的金钱"
 end
 
--- ============ 4. 做汉堡 — PickupItem + DropItem + LinkPlayerToOrder ============
+-- ============ 4. 做汉堡 ============
 local function doMakeBurger()
     local char = LP.Character
     if not char then return false, "角色未加载" end
@@ -452,10 +432,7 @@ local function doMakeBurger()
 
     if remotesReady and OrderEvent then
         local order = getActiveOrder()
-        if order then
-            pcall(function() OrderEvent:FireServer(order) end)
-            task.wait(0.2)
-        end
+        if order then pcall(function() OrderEvent:FireServer(order) end); task.wait(0.2) end
     end
 
     local stands = getFoodStands()
@@ -465,14 +442,12 @@ local function doMakeBurger()
         if pp then
             hrp.CFrame = pp.CFrame * CFrame.new(0, 1, 2)
             task.wait(0.15)
-
             if remotesReady and PickupEvent then
                 pcall(function() PickupEvent:FireServer(stand) end)
             else
                 pcall(function()
                     local VIM = game:GetService("VirtualInputManager")
-                    VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-                    task.wait(0.05)
+                    VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game); task.wait(0.05)
                     VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game)
                 end)
             end
@@ -483,29 +458,23 @@ local function doMakeBurger()
         if grill then
             hrp.CFrame = grill.CFrame * CFrame.new(0, 1, 2)
             task.wait(0.15)
-
             if remotesReady and DropEvent then
-                pcall(function()
-                    DropEvent:FireServer(stand, grill.Position)
-                end)
+                pcall(function() DropEvent:FireServer(stand, grill.Position) end)
             else
                 pcall(function()
                     local VIM = game:GetService("VirtualInputManager")
-                    VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-                    task.wait(0.05)
+                    VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game); task.wait(0.05)
                     VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game)
                 end)
             end
             return true, "做汉堡: 食材->Grill"
         end
     end
-
     return false, "找不到食材站"
 end
 
 -- ============ ESP ============
 local EO = {}
-
 local function makeESP(target)
     if EO[target] then return end
     local bb = Instance.new("BillboardGui")
@@ -535,15 +504,11 @@ end
 
 local function clearESP(target)
     local e = EO[target]
-    if e then
-        pcall(function() e.BB:Destroy() end)
-        pcall(function() e.HL:Destroy() end)
-        EO[target] = nil
-    end
+    if e then pcall(function() e.BB:Destroy() end); pcall(function() e.HL:Destroy() end); EO[target] = nil end
 end
 
 local function clearAllESP()
-    for target, _ in pairs(EO) do clearESP(target) end
+    for t, _ in pairs(EO) do clearESP(t) end
     EO = {}
 end
 
@@ -618,24 +583,16 @@ end
 local function killParts()
     if PH then PH:Disconnect(); PH = nil end
     for _, p in ipairs(PS) do pcall(function() p.F:Destroy() end) end
-    PS = {}
-    pcall(function() PC:Destroy() end)
-    PC = nil
+    PS = {}; pcall(function() PC:Destroy() end); PC = nil
 end
 
 -- ============ UI ============
 local function makeWindow()
     WN = WI:CreateWindow({
-        Title = "🍔 汉堡自动脚本",
-        Author = "b站英吉利超入_",
-        Icon = "solar:hamburger-bold",
-        Size = UDim2.fromOffset(750, 520),
-        ToggleKey = Enum.KeyCode.RightShift,
-        Folder = "burger-script",
-        Acrylic = true,
-        Resizable = false,
-        ScrollBarEnabled = true,
-        HideSearchBar = true,
+        Title = "🍔 汉堡自动脚本", Author = "b站英吉利超入_", Icon = "solar:hamburger-bold",
+        Size = UDim2.fromOffset(750, 520), ToggleKey = Enum.KeyCode.RightShift,
+        Folder = "burger-script", Acrylic = true, Resizable = false,
+        ScrollBarEnabled = true, HideSearchBar = true,
         OnClose = function()
             killParts()
             S.KillNPC = false; S.GrindBodies = false; S.MakeBurgers = false
@@ -659,31 +616,25 @@ local function makeWindow()
         end
     })
 
-    task.spawn(function()
-        task.wait(0.5)
-        pcall(function() WN:SetToggleKey(Enum.KeyCode.RightShift) end)
-    end)
+    task.spawn(function() task.wait(0.5); pcall(function() WN:SetToggleKey(Enum.KeyCode.RightShift) end) end)
 
-    -- Tab1: 主控面板
     local t1 = WN:Tab({Title = "主控面板", Icon = "solar:slider-vertical-bold"})
-    CT.KillNPC = t1:Toggle({Flag = "KillNPC", Title = "自动杀死NPC", Value = false, Callback = function(v) S.KillNPC = v end})
+    CT.KillNPC = t1:Toggle({Flag = "KillNPC", Title = "自动杀死NPC(爆头)", Value = false, Callback = function(v) S.KillNPC = v end})
     CT.GrindBodies = t1:Toggle({Flag = "GrindBodies", Title = "自动粉碎尸体", Value = false, Callback = function(v) S.GrindBodies = v end})
     CT.MakeBurgers = t1:Toggle({Flag = "MakeBurgers", Title = "自动做汉堡", Value = false, Callback = function(v) S.MakeBurgers = v end})
     CT.CollectMoney = t1:Toggle({Flag = "CollectMoney", Title = "自动收集金钱", Value = false, Callback = function(v) S.CollectMoney = v end})
-    CT.AutoMode = t1:Toggle({Flag = "AutoMode", Title = "全自动模式", Desc = "接单->杀NPC->粉碎->做汉堡->收钱", Value = false, Callback = function(v) S.AutoMode = v end})
+    CT.AutoMode = t1:Toggle({Flag = "AutoMode", Title = "全自动模式", Desc = "杀NPC->粉碎->做汉堡->收钱", Value = false, Callback = function(v) S.AutoMode = v end})
     t1:Divider()
     CT.Esp = t1:Toggle({Flag = "EspEnabled", Title = "NPC透视", Value = false, Callback = function(v) S.EspEnabled = v; if not v then clearAllESP() end end})
     t1:Divider()
     CT.KillRange = t1:Slider({Flag = "KillRange", Title = "攻击范围", Step = 5, Value = {Min = 5, Max = 100, Default = 25}, Width = 200, IsTextbox = true, Callback = function(v) S.KillRange = v end})
 
-    -- Tab2: 功能设置
     local t2 = WN:Tab({Title = "功能设置", Icon = "solar:settings-bold"})
     t2:Keybind({Flag = "KillKey", Title = "杀NPC快捷键", Value = "", Callback = function(v) KB.Kill = v end})
     t2:Keybind({Flag = "GrindKey", Title = "粉碎快捷键", Value = "", Callback = function(v) KB.Grind = v end})
     t2:Keybind({Flag = "BurgerKey", Title = "做汉堡快捷键", Value = "", Callback = function(v) KB.Burger = v end})
     t2:Keybind({Flag = "MoneyKey", Title = "收钱快捷键", Value = "", Callback = function(v) KB.Money = v end})
 
-    -- Tab3: UI设置
     local t3 = WN:Tab({Title = "UI设置", Icon = "solar:monitor-bold"})
     t3:Keybind({Flag = "WindowKey", Title = "窗口快捷键", Value = "RightShift", Callback = function(v) KB.Window = v end})
     CT.Particles = t3:Toggle({Flag = "Particles", Title = "粒子背景", Value = true, Callback = function(v)
@@ -698,28 +649,24 @@ local function makeWindow()
         pcall(function() WI:SetTheme(v) end); S.ParticleColor = getThemeColor(v)
     end})
 
-    -- Tab4: 信息统计
     local t4 = WN:Tab({Title = "信息统计", Icon = "solar:chart-bold"})
     local npcP = t4:Paragraph({Title = "👤 NPC: 0"})
     local bodyP = t4:Paragraph({Title = "🦴 尸体: 0"})
     local moneyP = t4:Paragraph({Title = "💰 金钱: 0"})
     local ingP = t4:Paragraph({Title = "🍔 食材站: 0"})
 
-    -- Tab5: 配置管理
     local t5 = WN:Tab({Title = "配置管理", Icon = "solar:diskette-bold"})
     t5:Input({Flag = "CN", Title = "配置名称", Value = "default", Icon = "solar:file-text-bold", Callback = function(v) end})
     t5:Button({Title = "💾 保存", Icon = "solar:check-circle-bold", Justify = "Center", Color = Color3.fromHex("#305dff"), Callback = function() end})
     t5:Button({Title = "📂 加载", Icon = "solar:refresh-circle-bold", Justify = "Center", Color = Color3.fromHex("#10C550"), Callback = function() end})
     t5:Button({Title = "🗑️ 删除", Icon = "solar:trash-bin-trash-bold", Justify = "Center", Color = Color3.fromHex("#ff3040"), Callback = function() end})
 
-    -- Tab6: 关于
     local t6 = WN:Tab({Title = "关于", Icon = "solar:info-square-bold"})
-    t6:Paragraph({Title = "汉堡自动脚本 v2.5.2"})
+    t6:Paragraph({Title = "汉堡自动脚本 v2.5.3"})
     t6:Divider()
     t6:Paragraph({Title = "👤 作者", Desc = "b站英吉利超入_"})
-    t6:Divider()
     t6:Paragraph({Title = "💡 使用", Desc = IM and "手机:点击悬浮按钮" or "PC: RightShift打开菜单"})
-    t6:Paragraph({Title = "🔧 v2.5.2更新", Desc = "🧹 StoreInSack装袋(非PickupItem)\n尸体从SackStorage直接取\nStoreInSack + DropItem结合流程"})
+    t6:Paragraph({Title = "🔧 v2.5.3更新", Desc = "StoreInSack + UnstoreFromSack完整流程\nSackStorage品质自动匹配\n尸体从工作区Pickable标签获取"})
 
     UIS.InputBegan:Connect(function(input, gpe)
         if gpe or input.UserInputType ~= Enum.UserInputType.Keyboard then return end
@@ -738,8 +685,8 @@ local PP = false
 pcall(function() WI:SetTheme("Dark") end)
 S.ParticleColor = getThemeColor("Dark")
 WI:Popup({
-    Title = "🍔 汉堡自动脚本 v2.5.2",
-    Content = "🎯 爆头击杀\n🧹 StoreInSack装袋->DropItem粉碎\n🍔 PickupItem->DropItem做汉堡\n💰 fireproximityprompt收钱\n📦 接单: LinkPlayerToOrder\n\nv2.5.2: StoreInSack确认路径",
+    Title = "🍔 汉堡自动脚本 v2.5.3",
+    Content = "🎯 爆头(HeadHitbox)\n🎒 StoreInSack装袋\n📤 UnstoreFromSack丢出\n📦 SackStorage品质匹配\n\n杀NPC | 粉碎 | 做汉堡 | 收钱",
     Buttons = {{Title = "确认加载", Callback = function() PP = true end, Variant = "Primary"}}
 })
 while not PP do task.wait(0.1) end
@@ -747,10 +694,9 @@ while not PP do task.wait(0.1) end
 local function mainLoop()
     local npcP, bodyP, moneyP, ingP = makeWindow()
     WI:Notify({
-        Title = "🍔 汉堡脚本 v2.5.2",
-        Content = "RightShift打开\n远程:" .. (remotesReady and "✅ StoreInSack就绪" or "⚠ 备选"),
-        Duration = 3,
-        Icon = "solar:bell-bold"
+        Title = "🍔 汉堡脚本 v2.5.3",
+        Content = "已加载! RightShift打开\n远程:" .. (remotesReady and "✅ Store+Unstore就绪" or "⚠ 模拟输入"),
+        Duration = 3, Icon = "solar:bell-bold"
     })
     local lastInfoUpdate = 0
     while true do
