@@ -1,4 +1,4 @@
-print("[Burger v2.27] 加载中...")
+print("[Burger v2.28] 加载中...")
 
 local P = game:GetService("Players")
 local WS = game:GetService("Workspace")
@@ -21,9 +21,9 @@ pcall(function()
 end)
 if MeleeEvent and PickupEvent and DropEvent then
     remotesReady = true
-    print("[v2.27] 远程事件就绪")
+    print("[v2.28] 远程事件就绪")
 else
-    warn("[v2.27] 远程事件缺失")
+    warn("[v2.28] 远程事件缺失")
 end
 
 for _, g in ipairs(C:GetChildren()) do
@@ -37,7 +37,7 @@ end
 
 local WI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
 if not WI then return end
-print("[v2.27] WindUI 加载成功")
+print("[v2.28] WindUI 加载成功")
 
 local S = {
     KillNPC = false,
@@ -309,7 +309,7 @@ end
 
 local NF = Vector3.new(0, 0, 1)
 
--- === 杀戮光环 v2.27: 可调节目标数, 无传送 ===
+-- === 杀戮光环 v2.28: 可调节目标数, 无传送 ===
 local function dK()
     if not remotesReady or not MeleeEvent then return end
     local c = LP.Character
@@ -628,7 +628,7 @@ end
 -- === UI ===
 local function mW()
     WN = WI:CreateWindow({
-        Title = "汉堡脚本", Author = "bilibili", Icon = "solar:hamburger-bold",
+        Title = "汉堡脚本", Author = "b站英吉利超入_", Icon = "solar:hamburger-bold",
         Size = UDim2.fromOffset(750,520), ToggleKey = Enum.KeyCode.RightShift,
         Folder = "burger-script", Acrylic = true, Resizable = false,
         ScrollBarEnabled = true, HideSearchBar = true,
@@ -693,10 +693,10 @@ local function mW()
     end)
 
     local t6 = WN:Tab({Title="关于", Icon="solar:info-square-bold"})
-    t6:Paragraph({Title="汉堡脚本 v2.27"})
+    t6:Paragraph({Title="汉堡脚本 v2.28"})
     t6:Divider()
-    t6:Paragraph({Title="作者", Desc="bilibili"})
-    t6:Paragraph({Title="v2.27", Desc="SackStorage调试 / 中文界面 / 可调目标数 / 取消按钮"})
+    t6:Paragraph({Title="作者", Desc="b站英吉利超入_"})
+    t6:Paragraph({Title="v2.28", Desc="SackStorage调试 / 中文界面 / 可调目标数 / 取消按钮"})
 
     UIS.InputBegan:Connect(function(input, gpe)
         if gpe or input.UserInputType ~= Enum.UserInputType.Keyboard then return end
@@ -714,7 +714,7 @@ local PCancel = false
 pcall(function() WI:SetTheme("Dark") end)
 S.ParticleColor = tc("Dark")
 WI:Popup({
-    Title = "汉堡脚本 v2.27",
+    Title = "汉堡脚本 v2.28",
     Content = "中文界面 / 可调目标数(1-10) / StoreInSack粉碎",
     Buttons = {
         {Title="加载", Callback=function() PP=true end, Variant="Primary"},
@@ -722,11 +722,11 @@ WI:Popup({
     }
 })
 while not PP and not PCancel do wait(0.1) end
-if PCancel then print("[v2.27] 已取消加载"); return end
+if PCancel then print("[v2.28] 已取消加载"); return end
 
 spawn(function()
     local npcP, bodyP, moneyP = mW()
-    print("[v2.27] 主循环开始")
+    print("[v2.28] 主循环开始")
     local last = 0
     while true do
         if S.AutoMode then
