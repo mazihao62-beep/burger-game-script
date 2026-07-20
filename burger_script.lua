@@ -1,6 +1,6 @@
--- 汉堡游戏自动脚本 v2.5.3
+-- 汉堡游戏自动脚本 v2.5.4
 -- 作者: b站英吉利超入_
--- 修复: StoreInSack + UnstoreFromSack完整流程 (Cobalt反编译确认)
+-- 修复: 简化远程事件 — PickupItem/DropItem/MeleeHitEvent/LinkPlayerToOrder (Cobalt确认)
 
 local P = game:GetService("Players")
 local WS = game:GetService("Workspace")
@@ -16,39 +16,25 @@ if not LP then return end
 local IM = false
 pcall(function() IM = UIS.TouchEnabled and not UIS.KeyboardEnabled end)
 
--- ============ 远程事件缓存 ============
-local MeleeEvent, PickupEvent, DropEvent, OrderEvent, StoreSackEvent, UnstoreSackEvent
-local SackStorage = nil  -- RS.InGameObjects.SackStorage["Normal Customer"]等品质
+-- ============ 远程事件缓存 (4个事件, Cobalt确认路径) ============
+local MeleeEvent, PickupEvent, DropEvent, OrderEvent
 local remotesReady = false
 
 local function loadRemotes()
     local ok = pcall(function()
-        local Network = RS:WaitForChild("Network", 10)
-        local Remotes = RS:WaitForChild("Remotes", 10)
-        MeleeEvent = Network:WaitForChild("MeleeHitEvent", 5)
-        PickupEvent = Remotes:WaitForChild("PickupItem", 5)
-        DropEvent = Remotes:WaitForChild("DropItem", 5)
-        OrderEvent = Network:WaitForChild("LinkPlayerToOrder", 5)
-        StoreSackEvent = Network:WaitForChild("StoreInSack", 5)
-        UnstoreSackEvent = Network:WaitForChild("UnstoreFromSack", 5)
-
-        local igo = RS:WaitForChild("InGameObjects", 5)
-        if igo then
-            SackStorage = igo:WaitForChild("SackStorage", 5)
-        end
+        -- RS.Network.MeleeHitEvent (Cobalt确认)
+        -- RS.Remotes.PickupItem / DropItem (Cobalt确认)
+        -- RS.Network.LinkPlayerToOrder (Cobalt确认)
+        MeleeEvent = RS:WaitForChild("Network", 10):WaitForChild("MeleeHitEvent", 5)
+        PickupEvent = RS:WaitForChild("Remotes", 10):WaitForChild("PickupItem", 5)
+        DropEvent = RS:WaitForChild("Remotes", 10):WaitForChild("DropItem", 5)
+        OrderEvent = RS:WaitForChild("Network", 10):WaitForChild("LinkPlayerToOrder", 5)
     end)
-    if ok and MeleeEvent and StoreSackEvent and UnstoreSackEvent then
+    if ok and MeleeEvent and PickupEvent and DropEvent then
         remotesReady = true
-        print("[Burger v2.5.3] 远程就绪: Melee/StoreSack/UnstoreSack/Order + 爆头")
-        if SackStorage then
-            local names = {}
-            for _, v in ipairs(SackStorage:GetChildren()) do
-                table.insert(names, v.Name)
-            end
-            print("[Burger v2.5.3] SackStorage品质: " .. table.concat(names, ", "))
-        end
+        print("[Burger v2.5.4] 远程就绪: MeleeHitEvent / PickupItem / DropItem / LinkPlayerToOrder + 爆头")
     else
-        print("[Burger v2.5.3] ⚠ 远程事件加载失败")
+        print("[Burger v2.5.4] ⚠ 远程事件加载失败，使用输入模拟")
     end
 end
 loadRemotes()
@@ -178,28 +164,13 @@ local function getNearbyNPCs(range)
     return npcs
 end
 
--- ============ 尸体 + 品质匹配 (SackStorage["Normal Customer"]等) ============
+-- ============ 尸体 (Pickable标签) ============
 local function getBodies()
-    -- 工作区中的Pickable标签尸体 (不在SackStorage里, SackStorage存的是品质条目)
     local bodies = {}
     for _, obj in ipairs(CS:GetTagged("Pickable")) do
         if obj:IsA("Model") then table.insert(bodies, obj) end
     end
     return bodies
-end
-
-local function getBodyQuality(body)
-    -- 根据尸体名字匹配SackStorage品质条目
-    if not body or not SackStorage then return nil end
-    local name = body.Name:lower()
-    for _, quality in ipairs(SackStorage:GetChildren()) do
-        if name:find(quality.Name:lower(), 1, true) then
-            return quality  -- SackStorage["Normal Customer"]这样的对象
-        end
-    end
-    -- 没匹配到用第一个
-    local first = SackStorage:GetChildren()[1]
-    return first
 end
 
 -- ============ 金钱 ============
@@ -295,7 +266,7 @@ local function doKillNPC()
     hrp.CFrame = target.HRP.CFrame * CFrame.new(0, 0, 2.5)
     task.wait(0.15)
 
-    -- 🎯 爆头
+    -- 🎯 爆头: HeadHitbox
     local hitPart = target.HRP
     local headHitbox = target.Model:FindFirstChild("HeadHitbox", true)
     if headHitbox and headHitbox:IsA("BasePart") then hitPart = headHitbox
@@ -325,50 +296,42 @@ local function doKillNPC()
     return true, "击杀(VIM): " .. target.Model.Name
 end
 
--- ============ 2. 粉碎 — StoreInSack(装袋) → 走到Grinder → UnstoreFromSack(丢出) ============
+-- ============ 2. 粉碎尸体 — PickupItem(捡尸) → 走到Grinder → DropItem(丢出) ============
 local function doGrindBody()
     local grinder = getGrinder()
     if not grinder then return false, "找不到粉碎机" end
 
     local bodies = getBodies()
-    if #bodies == 0 then return false, "附近没有尸体(Pickable标签)" end
+    if #bodies == 0 then return false, "附近没有尸体" end
 
     local char = LP.Character
     if not char then return false, "角色未加载" end
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if not hrp then return false end
 
-    local sack = getBackpackTool(TOOL_BAG_KEYWORDS)
-    if not sack then return false, "没有麻袋(Sack)" end
-
     local body = bodies[1]
 
-    if remotesReady and StoreSackEvent and UnstoreSackEvent then
-        equipTool(sack)
-        task.wait(0.15)
+    if remotesReady and PickupEvent and DropEvent then
+        -- 装备Sack
+        local sack = getBackpackTool(TOOL_BAG_KEYWORDS)
+        if sack then equipTool(sack); task.wait(0.15) end
 
-        -- 🔑 品质匹配: 从SackStorage找对应的品质条目
-        local quality = getBodyQuality(body)
-        if quality then
-            -- StoreInSack: backpack.Sack → SackStorage["Normal Customer"]
-            pcall(function() StoreSackEvent:FireServer(sack, quality) end)
-            task.wait(0.3)
+        -- 捡起尸体: RS.Remotes.PickupItem:FireServer(body)
+        pcall(function() PickupEvent:FireServer(body) end)
+        task.wait(0.3)
 
-            -- 走到Grinder前
-            hrp.CFrame = grinder.CFrame * CFrame.new(0, 0, 3)
-            task.wait(0.3)
+        -- 走到Grinder前
+        hrp.CFrame = grinder.CFrame * CFrame.new(0, 0, 3)
+        task.wait(0.3)
 
-            -- UnstoreFromSack: Character.Sack → 丢到Grinder里
-            local charSack = char:FindFirstChild("Sack")
-            if charSack then
-                pcall(function() UnstoreSackEvent:FireServer(charSack) end)
-            end
-            return true, "粉碎(StoreSack): " .. body.Name .. " [" .. (quality.Name or "?") .. "]"
-        end
+        -- 丢出尸体: RS.Remotes.DropItem:FireServer(body, grinder.Position)
+        pcall(function() DropEvent:FireServer(body, grinder.Position) end)
+        return true, "粉碎: " .. body.Name
     end
 
     -- 备用: F键
-    equipTool(sack); task.wait(0.15)
+    local sack = getBackpackTool(TOOL_BAG_KEYWORDS)
+    if sack then equipTool(sack); task.wait(0.15) end
     pcall(function()
         local VIM = game:GetService("VirtualInputManager")
         VIM:SendKeyEvent(true, Enum.KeyCode.F, false, game); task.wait(0.1)
@@ -662,11 +625,11 @@ local function makeWindow()
     t5:Button({Title = "🗑️ 删除", Icon = "solar:trash-bin-trash-bold", Justify = "Center", Color = Color3.fromHex("#ff3040"), Callback = function() end})
 
     local t6 = WN:Tab({Title = "关于", Icon = "solar:info-square-bold"})
-    t6:Paragraph({Title = "汉堡自动脚本 v2.5.3"})
+    t6:Paragraph({Title = "汉堡自动脚本 v2.5.4"})
     t6:Divider()
     t6:Paragraph({Title = "👤 作者", Desc = "b站英吉利超入_"})
     t6:Paragraph({Title = "💡 使用", Desc = IM and "手机:点击悬浮按钮" or "PC: RightShift打开菜单"})
-    t6:Paragraph({Title = "🔧 v2.5.3更新", Desc = "StoreInSack + UnstoreFromSack完整流程\nSackStorage品质自动匹配\n尸体从工作区Pickable标签获取"})
+    t6:Paragraph({Title = "🔧 v2.5.4更新", Desc = "PickupItem捡尸体 + DropItem丢Grinder\n爆头(HeadHitbox) + 动态攻击方向\nGAMEFOLDERS.NPCs/Customers优先搜索"})
 
     UIS.InputBegan:Connect(function(input, gpe)
         if gpe or input.UserInputType ~= Enum.UserInputType.Keyboard then return end
@@ -685,8 +648,8 @@ local PP = false
 pcall(function() WI:SetTheme("Dark") end)
 S.ParticleColor = getThemeColor("Dark")
 WI:Popup({
-    Title = "🍔 汉堡自动脚本 v2.5.3",
-    Content = "🎯 爆头(HeadHitbox)\n🎒 StoreInSack装袋\n📤 UnstoreFromSack丢出\n📦 SackStorage品质匹配\n\n杀NPC | 粉碎 | 做汉堡 | 收钱",
+    Title = "🍔 汉堡自动脚本 v2.5.4",
+    Content = "🎯 爆头(HeadHitbox)\n📦 PickupItem捡尸 + DropItem丢Grinder\n📋 LinkPlayerToOrder接单\n\n杀NPC | 粉碎 | 做汉堡 | 收钱",
     Buttons = {{Title = "确认加载", Callback = function() PP = true end, Variant = "Primary"}}
 })
 while not PP do task.wait(0.1) end
@@ -694,8 +657,8 @@ while not PP do task.wait(0.1) end
 local function mainLoop()
     local npcP, bodyP, moneyP, ingP = makeWindow()
     WI:Notify({
-        Title = "🍔 汉堡脚本 v2.5.3",
-        Content = "已加载! RightShift打开\n远程:" .. (remotesReady and "✅ Store+Unstore就绪" or "⚠ 模拟输入"),
+        Title = "🍔 汉堡脚本 v2.5.4",
+        Content = "已加载! RightShift打开\n远程: " .. (remotesReady and "✅ MeleeHitEvent / PickupItem / DropItem" or "⚠ 模拟输入"),
         Duration = 3, Icon = "solar:bell-bold"
     })
     local lastInfoUpdate = 0
