@@ -1,4 +1,4 @@
-print("[Burger v2.13] 加载...")
+print("[Burger v2.14] 加载...")
 
 local P = game:GetService("Players")
 local WS = game:GetService("Workspace")
@@ -29,9 +29,9 @@ pcall(function()
 end)
 if MeleeEvent and PickupEvent and DropEvent then
     remotesReady = true
-    print("[v2.13] 远程OK")
+    print("[v2.14] 远程OK")
 else
-    warn("[v2.13] 远程缺失")
+    warn("[v2.14] 远程缺失")
 end
 
 for _, g in ipairs(C:GetChildren()) do
@@ -56,7 +56,7 @@ for i = 1, 6 do
     wait(1.5)
 end
 if not loaded then return end
-print("[v2.13] WindUI OK")
+print("[v2.14] WindUI OK")
 
 local S = {
     KillNPC = false,
@@ -115,7 +115,7 @@ local function isMe(m)
     return false
 end
 
--- === NPC (GetChildren替代GetDescendants) ===
+-- === NPC (GetDescendants只在GAMEFOLDERS内) ===
 local function gN(range)
     local npcs = {}
     local c = LP.Character
@@ -131,7 +131,7 @@ local function gN(range)
         for _, fn in ipairs({"Customers", "NPCs"}) do
             local f = gf:FindFirstChild(fn)
             if f then
-                for _, m in ipairs(f:GetChildren()) do
+                for _, m in ipairs(f:GetDescendants()) do
                     if m:IsA("Model") and not seen[m] and not isMe(m) then
                         local h = m:FindFirstChildOfClass("Humanoid")
                         local mp = m:FindFirstChild("HumanoidRootPart")
@@ -151,7 +151,7 @@ local function gN(range)
     for _, fn in ipairs({"Customers", "NPCs"}) do
         local f = WS:FindFirstChild(fn)
         if f then
-            for _, m in ipairs(f:GetChildren()) do
+            for _, m in ipairs(f:GetDescendants()) do
                 if m:IsA("Model") and not seen[m] and not isMe(m) then
                     local h = m:FindFirstChildOfClass("Humanoid")
                     local mp = m:FindFirstChild("HumanoidRootPart")
@@ -161,22 +161,6 @@ local function gN(range)
                             seen[m] = true
                             table.insert(npcs, {M=m, H=h, P=mp, D=d})
                         end
-                    end
-                end
-            end
-        end
-    end
-
-    if #npcs == 0 then
-        for _, m in ipairs(WS:GetChildren()) do
-            if m:IsA("Model") and not seen[m] and not isMe(m) then
-                local h = m:FindFirstChildOfClass("Humanoid")
-                local mp = m:FindFirstChild("HumanoidRootPart")
-                if h and mp and h.Health > 0 then
-                    local d = (mp.Position - pos).Magnitude
-                    if d <= rr then
-                        seen[m] = true
-                        table.insert(npcs, {M=m, H=h, P=mp, D=d})
                     end
                 end
             end
@@ -271,48 +255,48 @@ end
 local NF = Vector3.new(0, 0, 1)
 
 local function dK()
-    print("[Kill] 开始扫描NPC...")
+    print("[Kill] 扫描NPC...")
     local npcs = gN(S.KillRange)
-    print("[Kill] NPC数量: " .. #npcs)
+    print("[Kill] NPC=" .. #npcs)
     if #npcs == 0 then return end
     local t = npcs[1]
-    print("[Kill] 目标: " .. t.M.Name .. " 距离: " .. math.floor(t.D) .. "m")
+    print("[Kill] 目标:" .. t.M.Name .. " @" .. math.floor(t.D) .. "m")
 
     local tool = gT({ "spatula", "shovel", "knife", "sword", "bat", "hammer", "axe", "weapon", "cleaver" })
-    print("[Kill] 武器: " .. (tool and tool.Name or "NIL"))
+    print("[Kill] 武器:" .. (tool and tool.Name or "NIL"))
     if not tool then return end
     eq(tool)
-    print("[Kill] 武器已装备")
+    print("[Kill] 已装备")
 
     local c = LP.Character
     if not c then return end
     local hrp = c:FindFirstChild("HumanoidRootPart")
     if not hrp or not t.P then
-        print("[Kill] FAIL: hrp=" .. tostring(hrp) .. " npcHrp=" .. tostring(t.P))
+        print("[Kill] FAIL:hrp=" .. tostring(hrp) .. " npc=" .. tostring(t.P))
         return
     end
 
     hrp.CFrame = t.P.CFrame * CFrame.new(0, 0, 2)
-    print("[Kill] 已传送到NPC面前")
+    print("[Kill] 已传送")
     wait(0.3)
 
     local hNow = t.M:FindFirstChildOfClass("Humanoid")
     if not hNow or hNow.Health <= 0 then
-        print("[Kill] NPC已死")
+        print("[Kill] 已死")
         return
     end
 
     local hp = fHP(t.M)
     if not hp then hp = t.P end
-    print("[Kill] 攻击部位: " .. hp.Name)
+    print("[Kill] 打:" .. hp.Name)
 
     if remotesReady and MeleeEvent then
         local ok, err = pcall(function()
             MeleeEvent:FireServer(hp, hp.Position, NF, S.AkillDamage)
         end)
-        print("[Kill] FireServer: " .. (ok and "OK" or ("ERR: " .. tostring(err))))
+        print("[Kill] FS:" .. (ok and "OK" or ("ERR:" .. tostring(err))))
     else
-        print("[Kill] 远程不可用")
+        print("[Kill] 无远程")
     end
 end
 
@@ -335,12 +319,12 @@ local function dG()
             wait(0.2)
         end
         pcall(function() PickupEvent:FireServer(body) end)
-        print("[Grind] Pickup完成")
+        print("[Grind] Pickup")
         wait(0.5)
         hrp.CFrame = grinder.CFrame * CFrame.new(0, 0, 2.5)
         wait(0.3)
         pcall(function() DropEvent:FireServer(body, grinder.Position) end)
-        print("[Grind] Drop完成")
+        print("[Grind] Drop")
     end
 end
 
@@ -612,10 +596,10 @@ local function mW()
         pcall(function() WN:SetToggleKey(Enum.KeyCode.RightShift) end)
     end)
 
-    -- Tab 1: 主控面板
+    -- Tab 1
     local t1 = WN:Tab({ Title = "主控面板", Icon = "solar:slider-vertical-bold" })
     CT.KillNPC = t1:Toggle({ Flag = "KillNPC", Title = "自动杀死NPC(爆头)", Value = false,
-        Callback = function(v) print("[Toggle] KillNPC = " .. tostring(v)); S.KillNPC = v end })
+        Callback = function(v) print("[Toggle] KillNPC=" .. tostring(v)); S.KillNPC = v end })
     CT.GrindBodies = t1:Toggle({ Flag = "GrindBodies", Title = "自动粉碎尸体", Value = false,
         Callback = function(v) S.GrindBodies = v end })
     CT.CollectMoney = t1:Toggle({ Flag = "CollectMoney", Title = "自动收集金钱", Value = false,
@@ -630,7 +614,7 @@ local function mW()
         Value = { Min = 5, Max = 200, Default = 50 }, Width = 200, IsTextbox = true,
         Callback = function(v) S.KillRange = v end })
 
-    -- Tab 2: 功能设置
+    -- Tab 2
     local t2 = WN:Tab({ Title = "功能设置", Icon = "solar:settings-bold" })
     t2:Keybind({ Flag = "KillKey", Title = "杀NPC快捷键", Value = "",
         Callback = function(v) KB.Kill = v end })
@@ -639,7 +623,7 @@ local function mW()
     t2:Keybind({ Flag = "MoneyKey", Title = "收钱快捷键", Value = "",
         Callback = function(v) KB.Money = v end })
 
-    -- Tab 3: UI设置
+    -- Tab 3
     local t3 = WN:Tab({ Title = "UI设置", Icon = "solar:monitor-bold" })
     t3:Keybind({ Flag = "WindowKey", Title = "窗口快捷键", Value = "RightShift",
         Callback = function(v) KB.Window = v end })
@@ -655,13 +639,13 @@ local function mW()
     t3:Dropdown({ Flag = "Theme", Title = "选择主题", Values = tns, Value = "Dark",
         Callback = function(v) pcall(function() WI:SetTheme(v) end); S.ParticleColor = tc(v) end })
 
-    -- Tab 4: 信息统计
+    -- Tab 4
     local t4 = WN:Tab({ Title = "信息统计", Icon = "solar:chart-bold" })
     local npcP = t4:Paragraph({ Title = "NPC: 0" })
     local bodyP = t4:Paragraph({ Title = "尸体: 0" })
     local moneyP = t4:Paragraph({ Title = "金钱: 0" })
 
-    -- Tab 5: 配置管理
+    -- Tab 5
     local t5 = WN:Tab({ Title = "配置管理", Icon = "solar:diskette-bold" })
     pcall(function()
         local CM = WN.ConfigManager
@@ -715,13 +699,13 @@ local function mW()
         spawn(function() wait(1); pcall(function() CM:CreateConfig("default", true) end) end)
     end)
 
-    -- Tab 6: 关于
+    -- Tab 6
     local t6 = WN:Tab({ Title = "关于", Icon = "solar:info-square-bold" })
-    t6:Paragraph({ Title = "汉堡自动脚本 v2.13" })
+    t6:Paragraph({ Title = "汉堡自动脚本 v2.14" })
     t6:Divider()
     t6:Paragraph({ Title = "作者", Desc = "b站英吉利超入_" })
     t6:Paragraph({ Title = "使用", Desc = IM and "手机:点击悬浮按钮" or "PC: RightShift打开菜单" })
-    t6:Paragraph({ Title = "v2.13", Desc = "GetChildren搜索 + 完整日志 | 杀NPC | 粉碎 | 收钱" })
+    t6:Paragraph({ Title = "v2.14", Desc = "GetDescendants(GAMEFOLDERS) | 杀NPC/粉碎/收钱" })
 
     UIS.InputBegan:Connect(function(input, gpe)
         if gpe or input.UserInputType ~= Enum.UserInputType.Keyboard then return end
@@ -739,17 +723,17 @@ local PP = false
 pcall(function() WI:SetTheme("Dark") end)
 S.ParticleColor = tc("Dark")
 WI:Popup({
-    Title = "汉堡自动脚本 v2.13",
-    Content = "GetChildren + 完整日志 | v2.11格式",
+    Title = "汉堡自动脚本 v2.14",
+    Content = "GetDescendants(GAMEFOLDERS) | 杀NPC/粉碎/收钱",
     Buttons = { { Title = "确认加载", Callback = function() PP = true end, Variant = "Primary" } }
 })
 while not PP do wait(0.1) end
 
 spawn(function()
     local npcP, bodyP, moneyP = mW()
-    print("[v2.13] 主循环启动!")
+    print("[v2.14] 主循环启动!")
     WI:Notify({
-        Title = "汉堡 v2.13",
+        Title = "汉堡 v2.14",
         Content = "远程:" .. (remotesReady and "OK" or "MISS"),
         Duration = 3,
         Icon = "solar:bell-bold"
