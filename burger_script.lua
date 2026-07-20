@@ -1,4 +1,4 @@
-print("[Burger v2.15] 加载...")
+print("[Burger v2.16] loading...")
 
 local P = game:GetService("Players")
 local WS = game:GetService("Workspace")
@@ -29,9 +29,9 @@ pcall(function()
 end)
 if MeleeEvent and PickupEvent and DropEvent then
     remotesReady = true
-    print("[v2.15] 远程OK")
+    print("[v2.16] remotes OK")
 else
-    warn("[v2.15] 远程缺失")
+    warn("[v2.16] remotes MISSING")
 end
 
 for _, g in ipairs(C:GetChildren()) do
@@ -56,7 +56,7 @@ for i = 1, 6 do
     wait(1.5)
 end
 if not loaded then return end
-print("[v2.15] WindUI OK")
+print("[v2.16] WindUI OK")
 
 local S = {
     KillNPC = false,
@@ -76,7 +76,6 @@ local KB = { Window = "RightShift" }
 local WN, CT = nil, {}
 local PR, PS, PC = false, {}, nil
 
--- === 工具函数 ===
 local function mKW(n, l)
     if not n then return false end
     local ln = n:lower()
@@ -86,7 +85,7 @@ local function mKW(n, l)
     return false
 end
 
--- v2.15: 先搜Character(已装备)再搜Backpack
+-- v2.16: search Character (equipped) first, then Backpack
 local function gT(kw)
     local c = LP.Character
     if c then
@@ -107,11 +106,12 @@ local function eq(t)
     if not t then return false end
     local c = LP.Character
     if not c then return false end
-    if t.Parent == c then return true end
     local h = c:FindFirstChildOfClass("Humanoid")
     if not h then return false end
-    h:EquipTool(t)
-    wait(0.15)
+    if t.Parent ~= c then
+        h:EquipTool(t)
+        wait(0.15)
+    end
     return true
 end
 
@@ -122,7 +122,6 @@ local function isMe(m)
     return false
 end
 
--- === NPC (GetDescendants只在GAMEFOLDERS内) ===
 local function gN(range)
     local npcs = {}
     local c = LP.Character
@@ -178,7 +177,6 @@ local function gN(range)
     return npcs
 end
 
--- === 尸体 ===
 local BK = { "customer", "cop", "civilian", "police", "officer", "guard", "worker",
     "chef", "noob", "gun", "medic", "armor", "oil", "gunslinger", "normal", "poor",
     "rich", "slinger" }
@@ -205,7 +203,6 @@ local function gB()
     return b
 end
 
--- === 金钱 ===
 local function gM()
     local bills = {}
     local items = WS:FindFirstChild("ITEMS")
@@ -258,44 +255,43 @@ local function fHP(model)
     return nil
 end
 
--- === 杀NPC ===
 local NF = Vector3.new(0, 0, 1)
 
 local function dK()
-    print("[Kill] 扫描NPC...")
+    print("[Kill] scan...")
     local npcs = gN(S.KillRange)
     print("[Kill] NPC=" .. #npcs)
     if #npcs == 0 then return end
     local t = npcs[1]
-    print("[Kill] 目标:" .. t.M.Name .. " @" .. math.floor(t.D) .. "m")
+    print("[Kill] target:" .. t.M.Name .. " @" .. math.floor(t.D) .. "m")
 
     local tool = gT({ "spatula", "shovel", "knife", "sword", "bat", "hammer", "axe", "weapon", "cleaver" })
-    print("[Kill] 武器:" .. (tool and tool.Name or "NIL"))
+    print("[Kill] weapon:" .. (tool and tool.Name or "NIL"))
     if not tool then return end
     eq(tool)
-    print("[Kill] 已装备")
+    print("[Kill] equipped")
 
     local c = LP.Character
     if not c then return end
     local hrp = c:FindFirstChild("HumanoidRootPart")
     if not hrp or not t.P then
-        print("[Kill] FAIL:hrp=" .. tostring(hrp) .. " npc=" .. tostring(t.P))
+        print("[Kill] FAIL")
         return
     end
 
     hrp.CFrame = t.P.CFrame * CFrame.new(0, 0, 2)
-    print("[Kill] 已传送")
+    print("[Kill] tp done")
     wait(0.3)
 
     local hNow = t.M:FindFirstChildOfClass("Humanoid")
     if not hNow or hNow.Health <= 0 then
-        print("[Kill] 已死")
+        print("[Kill] dead")
         return
     end
 
     local hp = fHP(t.M)
     if not hp then hp = t.P end
-    print("[Kill] 打:" .. hp.Name)
+    print("[Kill] hit:" .. hp.Name)
 
     if remotesReady and MeleeEvent then
         local ok, err = pcall(function()
@@ -303,68 +299,53 @@ local function dK()
         end)
         print("[Kill] FS:" .. (ok and "OK" or ("ERR:" .. tostring(err))))
     else
-        print("[Kill] 无远程")
+        print("[Kill] no remote")
     end
 end
 
--- === 粉碎 (v2.15: 去掉pcall吞错 + 打印错误) ===
+-- v2.16: grind with debug prints
 local function dG()
-    print("[Grind] 扫描...")
     local grinder = fP("Grinder")
-    if not grinder then
-        print("[Grind] 无Grinder")
-        return
-    end
+    if not grinder then return end
     local bodies = gB()
-    print("[Grind] 尸体=" .. #bodies)
+    print("[Grind] bodies=" .. #bodies)
     if #bodies == 0 then return end
     local body = bodies[1]
     local c = LP.Character
     if not c then return end
     local hrp = c:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
-    print("[Grind] 目标:" .. body.Name .. " FullPath:" .. body:GetFullName())
+    print("[Grind] target:" .. body.Name .. " path:" .. body:GetFullName())
 
-    if not remotesReady or not PickupEvent then
-        print("[Grind] 远程不可用")
-        return
-    end
-
-    local bp = gPP(body)
-    if bp then
-        hrp.CFrame = bp.CFrame * CFrame.new(0, 0, 2)
+    if remotesReady and PickupEvent and DropEvent then
+        local bp = gPP(body)
+        if bp then
+            hrp.CFrame = bp.CFrame * CFrame.new(0, 0, 2)
+            wait(0.2)
+        end
+        local ok1, err1 = pcall(function()
+            PickupEvent:FireServer(body)
+        end)
+        if ok1 then
+            print("[Grind] pickup OK")
+        else
+            print("[Grind] pickup ERR:" .. tostring(err1))
+            return
+        end
+        wait(0.5)
+        hrp.CFrame = grinder.CFrame * CFrame.new(0, 0, 2.5)
         wait(0.3)
-        print("[Grind] 传送完成")
-    else
-        print("[Grind] 警告: 无BasePart")
+        local ok2, err2 = pcall(function()
+            DropEvent:FireServer(body, grinder.Position)
+        end)
+        if ok2 then
+            print("[Grind] drop OK")
+        else
+            print("[Grind] drop ERR:" .. tostring(err2))
+        end
     end
-
-    local ok1, err1 = pcall(function()
-        print("[Grind] PickupItem:FireServer(" .. body:GetFullName() .. ")")
-        PickupEvent:FireServer(body)
-    end)
-    if not ok1 then
-        print("[Grind] Pickup ERR:" .. tostring(err1))
-        return
-    end
-    print("[Grind] Pickup OK")
-    wait(0.5)
-
-    hrp.CFrame = grinder.CFrame * CFrame.new(0, 0, 2.5)
-    wait(0.3)
-
-    local ok2, err2 = pcall(function()
-        print("[Grind] DropItem:FireServer(" .. body:GetFullName() .. "," .. tostring(grinder.Position) .. ")")
-        DropEvent:FireServer(body, grinder.Position)
-    end)
-    if not ok2 then
-        print("[Grind] Drop ERR:" .. tostring(err2))
-        return
-    end
-    print("[Grind] Drop OK")
 end
 
--- === 收钱 ===
 local function dC()
     local c = LP.Character
     if not c then return end
@@ -404,7 +385,7 @@ local function dC()
     end
 end
 
--- === 粒子 ===
+-- particles
 local function sP()
     if PR then return end
     if PC then
@@ -447,13 +428,9 @@ local function sP()
         local a = math.random() * 6.28
         local sp = 0.0008 + math.random() * 0.002
         table.insert(PS, {
-            F = d,
-            Sx = sx,
-            Sy = sy,
-            Vx = math.cos(a) * sp,
-            Vy = math.sin(a) * sp,
-            Ph = math.random() * 6.28,
-            Sz = sz
+            F = d, Sx = sx, Sy = sy,
+            Vx = math.cos(a) * sp, Vy = math.sin(a) * sp,
+            Ph = math.random() * 6.28, Sz = sz
         })
     end
 
@@ -470,8 +447,7 @@ local function sP()
                         local sy = math.max(0.05, math.min(0.95, p.Sy + p.Vy))
                         if sx >= 0.95 or sx <= 0.05 then p.Vx = -p.Vx end
                         if sy >= 0.95 or sy <= 0.05 then p.Vy = -p.Vy end
-                        p.Sx = sx
-                        p.Sy = sy
+                        p.Sx = sx; p.Sy = sy
                         p.F.Position = UDim2.new(sx, 0, sy, 0)
                         if curCol ~= p.F.BackgroundColor3 then
                             p.F.BackgroundColor3 = curCol
@@ -499,7 +475,7 @@ local function xP()
     PS = {}
 end
 
--- === ESP ===
+-- ESP
 local EO = {}
 
 local function mE(t)
@@ -564,9 +540,8 @@ local function dE()
     end
 end
 
--- === 主题 ===
 local function tc(n)
-    local tc = {
+    local t = {
         Dark = Color3.fromRGB(80, 170, 255),
         Light = Color3.fromRGB(60, 130, 210),
         Rose = Color3.fromRGB(255, 130, 170),
@@ -583,14 +558,14 @@ local function tc(n)
         Lemon = Color3.fromRGB(230, 210, 70),
         Cyber = Color3.fromRGB(0, 235, 210)
     }
-    return tc[n] or Color3.fromRGB(80, 170, 255)
+    return t[n] or Color3.fromRGB(80, 170, 255)
 end
 
--- === UI ===
+-- UI
 local function mW()
     WN = WI:CreateWindow({
-        Title = "汉堡自动脚本",
-        Author = "b站英吉利超入_",
+        Title = "Burger Script",
+        Author = "bilibili",
         Icon = "solar:hamburger-bold",
         Size = UDim2.fromOffset(750, 520),
         ToggleKey = Enum.KeyCode.RightShift,
@@ -632,61 +607,56 @@ local function mW()
         pcall(function() WN:SetToggleKey(Enum.KeyCode.RightShift) end)
     end)
 
-    -- Tab 1
-    local t1 = WN:Tab({ Title = "主控面板", Icon = "solar:slider-vertical-bold" })
-    CT.KillNPC = t1:Toggle({ Flag = "KillNPC", Title = "自动杀死NPC(爆头)", Value = false,
+    local t1 = WN:Tab({ Title = "Main", Icon = "solar:slider-vertical-bold" })
+    CT.KillNPC = t1:Toggle({ Flag = "KillNPC", Title = "Auto Kill NPC", Value = false,
         Callback = function(v) print("[Toggle] KillNPC=" .. tostring(v)); S.KillNPC = v end })
-    CT.GrindBodies = t1:Toggle({ Flag = "GrindBodies", Title = "自动粉碎尸体", Value = false,
+    CT.GrindBodies = t1:Toggle({ Flag = "GrindBodies", Title = "Auto Grind Bodies", Value = false,
         Callback = function(v) S.GrindBodies = v end })
-    CT.CollectMoney = t1:Toggle({ Flag = "CollectMoney", Title = "自动收集金钱", Value = false,
+    CT.CollectMoney = t1:Toggle({ Flag = "CollectMoney", Title = "Auto Collect Money", Value = false,
         Callback = function(v) S.CollectMoney = v end })
-    CT.AutoMode = t1:Toggle({ Flag = "AutoMode", Title = "全自动模式", Value = false,
+    CT.AutoMode = t1:Toggle({ Flag = "AutoMode", Title = "Full Auto", Value = false,
         Callback = function(v) S.AutoMode = v end })
     t1:Divider()
-    CT.Esp = t1:Toggle({ Flag = "EspEnabled", Title = "NPC透视", Value = false,
+    CT.Esp = t1:Toggle({ Flag = "EspEnabled", Title = "NPC ESP", Value = false,
         Callback = function(v) S.EspEnabled = v; if not v then cA() end end })
     t1:Divider()
-    CT.KillRange = t1:Slider({ Flag = "KillRange", Title = "攻击范围", Step = 5,
+    CT.KillRange = t1:Slider({ Flag = "KillRange", Title = "Kill Range", Step = 5,
         Value = { Min = 5, Max = 200, Default = 50 }, Width = 200, IsTextbox = true,
         Callback = function(v) S.KillRange = v end })
 
-    -- Tab 2
-    local t2 = WN:Tab({ Title = "功能设置", Icon = "solar:settings-bold" })
-    t2:Keybind({ Flag = "KillKey", Title = "杀NPC快捷键", Value = "",
+    local t2 = WN:Tab({ Title = "Keys", Icon = "solar:settings-bold" })
+    t2:Keybind({ Flag = "KillKey", Title = "Kill Key", Value = "",
         Callback = function(v) KB.Kill = v end })
-    t2:Keybind({ Flag = "GrindKey", Title = "粉碎快捷键", Value = "",
+    t2:Keybind({ Flag = "GrindKey", Title = "Grind Key", Value = "",
         Callback = function(v) KB.Grind = v end })
-    t2:Keybind({ Flag = "MoneyKey", Title = "收钱快捷键", Value = "",
+    t2:Keybind({ Flag = "MoneyKey", Title = "Money Key", Value = "",
         Callback = function(v) KB.Money = v end })
 
-    -- Tab 3
-    local t3 = WN:Tab({ Title = "UI设置", Icon = "solar:monitor-bold" })
-    t3:Keybind({ Flag = "WindowKey", Title = "窗口快捷键", Value = "RightShift",
+    local t3 = WN:Tab({ Title = "UI", Icon = "solar:monitor-bold" })
+    t3:Keybind({ Flag = "WindowKey", Title = "Toggle Key", Value = "RightShift",
         Callback = function(v) KB.Window = v end })
     t3:Divider()
-    CT.Particles = t3:Toggle({ Flag = "Particles", Title = "粒子背景(全屏)", Value = true,
+    CT.Particles = t3:Toggle({ Flag = "Particles", Title = "Particles", Value = true,
         Callback = function(v) S.Particles = v; if v then sP() else xP() end end })
-    t3:Toggle({ Flag = "Acrylic", Title = "毛玻璃", Value = true,
+    t3:Toggle({ Flag = "Acrylic", Title = "Acrylic", Value = true,
         Callback = function(v) S.Acrylic = v; pcall(function() WI:ToggleAcrylic(v) end) end })
-    t3:Toggle({ Flag = "Transparent", Title = "透明背景", Value = false,
+    t3:Toggle({ Flag = "Transparent", Title = "Transparent", Value = false,
         Callback = function(v) S.Transparent = v; pcall(function() WN:ToggleTransparency(v) end) end })
     local tns = { "Dark", "Light", "Rose", "Plant", "Ocean", "Sunset", "Midnight", "Forest",
         "Lavender", "Coral", "Mint", "Sky", "Blood", "Lemon", "Cyber" }
-    t3:Dropdown({ Flag = "Theme", Title = "选择主题", Values = tns, Value = "Dark",
+    t3:Dropdown({ Flag = "Theme", Title = "Theme", Values = tns, Value = "Dark",
         Callback = function(v) pcall(function() WI:SetTheme(v) end); S.ParticleColor = tc(v) end })
 
-    -- Tab 4
-    local t4 = WN:Tab({ Title = "信息统计", Icon = "solar:chart-bold" })
+    local t4 = WN:Tab({ Title = "Stats", Icon = "solar:chart-bold" })
     local npcP = t4:Paragraph({ Title = "NPC: 0" })
-    local bodyP = t4:Paragraph({ Title = "尸体: 0" })
-    local moneyP = t4:Paragraph({ Title = "金钱: 0" })
+    local bodyP = t4:Paragraph({ Title = "Bodies: 0" })
+    local moneyP = t4:Paragraph({ Title = "Money: 0" })
 
-    -- Tab 5
-    local t5 = WN:Tab({ Title = "配置管理", Icon = "solar:diskette-bold" })
+    local t5 = WN:Tab({ Title = "Config", Icon = "solar:diskette-bold" })
     pcall(function()
         local CM = WN.ConfigManager
         if not CM then return end
-        local cni = t5:Input({ Flag = "CN", Title = "配置名称", Value = "default",
+        local cni = t5:Input({ Flag = "CN", Title = "Config Name", Value = "default",
             Icon = "solar:file-text-bold", Callback = function(v) end })
         t5:Space()
         local AC = {}
@@ -695,39 +665,39 @@ local function mW()
         pcall(function()
             for _, v in ipairs(AC) do if v == "default" then DV = "default"; break end end
         end)
-        local ACD = t5:Dropdown({ Title = "已有配置", Values = AC, Value = DV,
+        local ACD = t5:Dropdown({ Title = "Saved Configs", Values = AC, Value = DV,
             Callback = function(v) if v then pcall(function() cni:Set(v) end) end end })
         t5:Space()
-        t5:Button({ Title = "保存", Icon = "solar:check-circle-bold", Justify = "Center",
+        t5:Button({ Title = "Save", Icon = "solar:check-circle-bold", Justify = "Center",
             Color = Color3.fromHex("#305dff"),
             Callback = function()
                 if not CM then return end
                 local c = CM:Config("default")
                 if c and c:Save() then
-                    WI:Notify({ Title = "已保存", Content = "配置已保存", Duration = 3,
+                    WI:Notify({ Title = "Saved", Content = "Config saved", Duration = 3,
                         Icon = "solar:check-circle-bold" })
                     pcall(function() ACD:Refresh(CM:AllConfigs()) end)
                 end
             end })
         t5:Space()
-        t5:Button({ Title = "加载", Icon = "solar:refresh-circle-bold", Justify = "Center",
+        t5:Button({ Title = "Load", Icon = "solar:refresh-circle-bold", Justify = "Center",
             Color = Color3.fromHex("#10C550"),
             Callback = function()
                 if not CM then return end
                 local c = CM:CreateConfig("default", false)
                 if c and c:Load() then
-                    WI:Notify({ Title = "已加载", Content = "配置已加载", Duration = 3,
+                    WI:Notify({ Title = "Loaded", Content = "Config loaded", Duration = 3,
                         Icon = "solar:refresh-circle-bold" })
                 end
             end })
         t5:Space()
-        t5:Button({ Title = "删除", Icon = "solar:trash-bin-trash-bold", Justify = "Center",
+        t5:Button({ Title = "Delete", Icon = "solar:trash-bin-trash-bold", Justify = "Center",
             Color = Color3.fromHex("#ff3040"),
             Callback = function()
                 if not CM then return end
                 local c = CM:Config("default")
                 if c and c:Delete() then
-                    WI:Notify({ Title = "已删除", Content = "配置已删除", Duration = 3,
+                    WI:Notify({ Title = "Deleted", Content = "Config deleted", Duration = 3,
                         Icon = "solar:trash-bin-trash-bold" })
                     pcall(function() ACD:Refresh(CM:AllConfigs()) end)
                 end
@@ -735,13 +705,12 @@ local function mW()
         spawn(function() wait(1); pcall(function() CM:CreateConfig("default", true) end) end)
     end)
 
-    -- Tab 6
-    local t6 = WN:Tab({ Title = "关于", Icon = "solar:info-square-bold" })
-    t6:Paragraph({ Title = "汉堡自动脚本 v2.15" })
+    local t6 = WN:Tab({ Title = "About", Icon = "solar:info-square-bold" })
+    t6:Paragraph({ Title = "Burger Script v2.16" })
     t6:Divider()
-    t6:Paragraph({ Title = "作者", Desc = "b站英吉利超入_" })
-    t6:Paragraph({ Title = "使用", Desc = IM and "手机:点击悬浮按钮" or "PC: RightShift打开菜单" })
-    t6:Paragraph({ Title = "v2.15", Desc = "武器搜Character+Backpack | 粉碎完整日志" })
+    t6:Paragraph({ Title = "Author", Desc = "bilibili" })
+    t6:Paragraph({ Title = "Usage", Desc = IM and "Mobile: touch button" or "PC: RightShift" })
+    t6:Paragraph({ Title = "v2.16", Desc = "weapon fix + grind logs" })
 
     UIS.InputBegan:Connect(function(input, gpe)
         if gpe or input.UserInputType ~= Enum.UserInputType.Keyboard then return end
@@ -754,23 +723,22 @@ local function mW()
     return npcP, bodyP, moneyP
 end
 
--- === 主循环 ===
 local PP = false
 pcall(function() WI:SetTheme("Dark") end)
 S.ParticleColor = tc("Dark")
 WI:Popup({
-    Title = "汉堡自动脚本 v2.15",
-    Content = "武器搜Character+背包 | 粉碎详细日志",
-    Buttons = { { Title = "确认加载", Callback = function() PP = true end, Variant = "Primary" } }
+    Title = "Burger Script v2.16",
+    Content = "weapon fix + grind debug",
+    Buttons = { { Title = "Load", Callback = function() PP = true end, Variant = "Primary" } }
 })
 while not PP do wait(0.1) end
 
 spawn(function()
     local npcP, bodyP, moneyP = mW()
-    print("[v2.15] 主循环启动!")
+    print("[v2.16] main loop start!")
     WI:Notify({
-        Title = "汉堡 v2.15",
-        Content = "远程:" .. (remotesReady and "OK" or "MISS"),
+        Title = "Burger v2.16",
+        Content = "remotes:" .. (remotesReady and "OK" or "MISS"),
         Duration = 3,
         Icon = "solar:bell-bold"
     })
@@ -784,26 +752,17 @@ spawn(function()
             pcall(function() dC() end)
             wait(1)
         else
-            if S.KillNPC then
-                pcall(function() dK() end)
-                wait(0.8)
-            end
-            if S.GrindBodies then
-                pcall(function() dG() end)
-                wait(0.8)
-            end
-            if S.CollectMoney then
-                pcall(function() dC() end)
-                wait(0.8)
-            end
+            if S.KillNPC then pcall(function() dK() end); wait(0.8) end
+            if S.GrindBodies then pcall(function() dG() end); wait(0.8) end
+            if S.CollectMoney then pcall(function() dC() end); wait(0.8) end
         end
         pcall(function() dE() end)
         local now = tick()
         if now - last > 3 then
             last = now
             if npcP then pcall(function() npcP:SetTitle("NPC: " .. #gN(100)) end) end
-            if bodyP then pcall(function() bodyP:SetTitle("尸体: " .. #gB()) end) end
-            if moneyP then pcall(function() moneyP:SetTitle("金钱: " .. #gM()) end) end
+            if bodyP then pcall(function() bodyP:SetTitle("Bodies: " .. #gB()) end) end
+            if moneyP then pcall(function() moneyP:SetTitle("Money: " .. #gM()) end) end
         end
         wait(2)
     end
