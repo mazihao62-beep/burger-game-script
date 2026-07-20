@@ -1,6 +1,6 @@
--- 汉堡游戏自动脚本 v2.2
+-- 汉堡游戏自动脚本 v2.3
 -- 作者: b站英吉利超入_
--- 修复: currentItem.Value nil 错误
+-- 修复: 金钱收集改为桌上/地上的直接收集
 
 local P = game:GetService("Players")
 local WS = game:GetService("Workspace")
@@ -66,7 +66,7 @@ local WN, CT = nil, {}
 local PH, PC, PS = nil, nil, {}
 
 local FOOD_KEYWORDS = {"meat", "patty", "bun", "bread", "cheese", "lettuce", "tomato", "bacon", "onion", "pickle", "sauce", "fries", "drink", "soda", "shake", "plate", "burger", "sandwich", "top", "bottom", "ingredient", "raw", "cooked"}
-local MONEY_KEYWORDS = {"money", "cash", "coin", "gold", "dollar", "cent", "buck", "credit", "profit", "revenue", "income", "bill", "note"}
+local MONEY_KEYWORDS = {"money", "cash", "coin", "gold", "dollar", "cent", "buck", "credit", "profit", "revenue", "income", "bill", "note", "tip", "payment", "change", "earn"}
 local GRINDER_KEYWORDS = {"grind", "grinder", "shred", "shredder", "mill", "crush", "crusher", "process", "processor", "blend", "blender"}
 local POLICE_KEYWORDS = {"police", "cop", "officer", "sheriff", "fbi", "swat", "riot", "shield", "security", "guard", "federal", "agent", "patrol", "detective", "trooper"}
 
@@ -196,20 +196,6 @@ local function getGrinder()
     return nil
 end
 
-local function getCashRegister()
-    local wp = WS:FindFirstChild("WORLDPARTS")
-    if not wp then return nil end
-    for _, obj in ipairs(wp:GetDescendants()) do
-        if obj:IsA("Model") then
-            local n = obj.Name:lower()
-            if n:find("cash") or n:find("register") or n:find("till") or n:find("checkout") then
-                return obj
-            end
-        end
-    end
-    return nil
-end
-
 local function getPrimaryPart(model)
     if not model then return nil end
     local ok, pp = pcall(function() return model.PrimaryPart end)
@@ -280,17 +266,27 @@ local function doGrindBody()
 end
 
 local function doCollectMoney()
-    local orbs = getMoneyOrbs(50)
-    if #orbs == 0 then return false, "附近没有金钱" end
     local char = LP.Character
     if not char then return false, "角色未加载" end
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if not hrp then return false end
-    for _, orb in ipairs(orbs) do
-        hrp.CFrame = orb.Part.CFrame * CFrame.new(0, 2, 0)
-        task.wait(0.05)
+    local pos = hrp.Position
+    local collected = 0
+    for _, obj in ipairs(WS:GetDescendants()) do
+        if obj:IsA("BasePart") then
+            if findKeyword(obj.Name, MONEY_KEYWORDS) then
+                local dist = (obj.Position - pos).Magnitude
+                if dist <= 80 then
+                    hrp.CFrame = obj.CFrame * CFrame.new(0, 2, 0)
+                    task.wait(0.05)
+                    collected = collected + 1
+                    if collected >= 30 then break end
+                end
+            end
+        end
     end
-    return true, "收集了 " .. #orbs .. " 个金钱"
+    if collected > 0 then return true, "收集了 " .. collected .. " 个金钱" end
+    return false, "附近没有金钱"
 end
 
 local function doMakeBurger()
@@ -547,7 +543,7 @@ local function makeWindow()
     t5:Button({Title = "🗑️ 删除", Icon = "solar:trash-bin-trash-bold", Justify = "Center", Color = Color3.fromHex("#ff3040"), Callback = function() end})
 
     local t6 = WN:Tab({Title = "关于", Icon = "solar:info-square-bold"})
-    t6:Paragraph({Title = "汉堡自动脚本 v2.2"})
+    t6:Paragraph({Title = "汉堡自动脚本 v2.3"})
     t6:Divider()
     t6:Paragraph({Title = "👤 作者", Desc = "b站英吉利超入_"})
     t6:Divider()
@@ -570,8 +566,8 @@ local PP = false
 pcall(function() WI:SetTheme("Dark") end)
 S.ParticleColor = getThemeColor("Dark")
 WI:Popup({
-    Title = "🍔 汉堡自动脚本 v2.2",
-    Content = "⚔️ 自动杀死NPC(全杀模式)\n🧹 自动粉碎尸体\n🍔 自动做汉堡\n💰 自动收集金钱\n👁 NPC透视\n\n⚠️ 所有功能默认关闭",
+    Title = "🍔 汉堡自动脚本 v2.3",
+    Content = "⚔️ 自动杀死NPC(全杀模式)\n🧹 自动粉碎尸体\n🍔 自动做汉堡\n💰 自动收集金钱(桌上/地上)\n👁 NPC透视\n\n⚠️ 所有功能默认关闭",
     Buttons = {{Title = "确认加载", Callback = function() PP = true end, Variant = "Primary"}}
 })
 while not PP do task.wait(0.1) end
