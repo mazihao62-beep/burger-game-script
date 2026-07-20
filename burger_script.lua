@@ -1,8 +1,7 @@
--- 汉堡游戏自动脚本 v2.1
+-- 汉堡游戏自动脚本 v2.2
 -- 作者: b站英吉利超入_
--- 全杀模式: 所有NPC都攻击，不分类
+-- 修复: currentItem.Value nil 错误
 
--- ===== 初始化 =====
 local P = game:GetService("Players")
 local WS = game:GetService("Workspace")
 local RS = game:GetService("ReplicatedStorage")
@@ -66,14 +65,11 @@ local KB = { Window = "RightShift" }
 local WN, CT = nil, {}
 local PH, PC, PS = nil, nil, {}
 
--- ===== 关键词表 =====
-local POLICE_KEYWORDS = {"police", "cop", "officer", "sheriff", "fbi", "swat", "riot", "shield", "security", "guard", "federal", "agent", "patrol", "detective", "trooper"}
 local FOOD_KEYWORDS = {"meat", "patty", "bun", "bread", "cheese", "lettuce", "tomato", "bacon", "onion", "pickle", "sauce", "fries", "drink", "soda", "shake", "plate", "burger", "sandwich", "top", "bottom", "ingredient", "raw", "cooked"}
 local MONEY_KEYWORDS = {"money", "cash", "coin", "gold", "dollar", "cent", "buck", "credit", "profit", "revenue", "income", "bill", "note"}
 local GRINDER_KEYWORDS = {"grind", "grinder", "shred", "shredder", "mill", "crush", "crusher", "process", "processor", "blend", "blender"}
-local COOK_KEYWORDS = {"cook", "stove", "grill", "fry", "fryer", "oven", "burn", "heat", "cooktop", "hob", "hotplate"}
+local POLICE_KEYWORDS = {"police", "cop", "officer", "sheriff", "fbi", "swat", "riot", "shield", "security", "guard", "federal", "agent", "patrol", "detective", "trooper"}
 
--- ===== 工具函数 =====
 local function findKeyword(name, keywords)
     if not name then return false end
     local lower = name:lower()
@@ -111,11 +107,6 @@ local function isPlayerChar(m)
     return false
 end
 
--- 全杀模式: 所有NPC都是"Bad"
-local function classifyNPC(npc)
-    return "Bad"
-end
-
 local function getNearbyNPCs(range)
     local npcs = {}
     local char = LP.Character
@@ -133,7 +124,7 @@ local function getNearbyNPCs(range)
                 if mhrp and obj.Health > 0 then
                     local dist = (mhrp.Position - pos).Magnitude
                     if dist <= range then
-                        table.insert(npcs, {Model = m, Humanoid = obj, HRP = mhrp, Distance = dist, Type = "Bad"})
+                        table.insert(npcs, {Model = m, Humanoid = obj, HRP = mhrp, Distance = dist})
                     end
                 end
             end
@@ -205,7 +196,29 @@ local function getGrinder()
     return nil
 end
 
--- ===== 核心功能 =====
+local function getCashRegister()
+    local wp = WS:FindFirstChild("WORLDPARTS")
+    if not wp then return nil end
+    for _, obj in ipairs(wp:GetDescendants()) do
+        if obj:IsA("Model") then
+            local n = obj.Name:lower()
+            if n:find("cash") or n:find("register") or n:find("till") or n:find("checkout") then
+                return obj
+            end
+        end
+    end
+    return nil
+end
+
+local function getPrimaryPart(model)
+    if not model then return nil end
+    local ok, pp = pcall(function() return model.PrimaryPart end)
+    if ok and pp then return pp end
+    local ok2, bp = pcall(function() return model:FindFirstChildWhichIsA("BasePart") end)
+    if ok2 and bp then return bp end
+    return nil
+end
+
 local function doKillNPC()
     local npcs = getNearbyNPCs(S.KillRange)
     if #npcs == 0 then return false, "附近没有NPC" end
@@ -245,8 +258,8 @@ local function doGrindBody()
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if not hrp then return false end
     local bag = bodies[1]
-    local bpos = bag.PrimaryPart or bag:FindFirstChildWhichIsA("BasePart")
-    local gpos = grinder.PrimaryPart or grinder:FindFirstChildWhichIsA("BasePart")
+    local bpos = getPrimaryPart(bag)
+    local gpos = getPrimaryPart(grinder)
     if not bpos or not gpos then return false, "无法接近目标" end
     hrp.CFrame = bpos.CFrame * CFrame.new(0, 0, 2)
     task.wait(0.2)
@@ -288,7 +301,7 @@ local function doMakeBurger()
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if not hrp then return false end
     for _, item in ipairs(ingredients) do
-        local pp = item.PrimaryPart or item:FindFirstChildWhichIsA("BasePart")
+        local pp = getPrimaryPart(item)
         if pp then
             hrp.CFrame = pp.CFrame * CFrame.new(0, 1, 2)
             task.wait(0.1)
@@ -303,10 +316,9 @@ local function doMakeBurger()
     return true, "制作汉堡材料: " .. #ingredients .. " 件"
 end
 
--- ===== ESP =====
 local EO = {}
 
-local function makeESP(target, tag)
+local function makeESP(target)
     if EO[target] then return end
     local bb = Instance.new("BillboardGui")
     bb.Size = UDim2.new(0, 200, 0, 50)
@@ -361,14 +373,13 @@ local function doESPScan()
                 if dist > S.EspRange then
                     clearESP(m)
                 elseif dist <= S.EspRange and obj.Health > 0 then
-                    makeESP(m, "Bad")
+                    makeESP(m)
                 end
             end
         end
     end
 end
 
--- ===== 粒子系统 =====
 local function getThemeColor(themeName)
     local colors = {
         Dark = Color3.fromRGB(80, 170, 255),
@@ -435,7 +446,6 @@ local function killParts()
     PC = nil
 end
 
--- ===== 创建窗口 =====
 local function makeWindow()
     WN = WI:CreateWindow({
         Title = "🍔 汉堡自动脚本",
@@ -537,7 +547,7 @@ local function makeWindow()
     t5:Button({Title = "🗑️ 删除", Icon = "solar:trash-bin-trash-bold", Justify = "Center", Color = Color3.fromHex("#ff3040"), Callback = function() end})
 
     local t6 = WN:Tab({Title = "关于", Icon = "solar:info-square-bold"})
-    t6:Paragraph({Title = "汉堡自动脚本 v2.1"})
+    t6:Paragraph({Title = "汉堡自动脚本 v2.2"})
     t6:Divider()
     t6:Paragraph({Title = "👤 作者", Desc = "b站英吉利超入_"})
     t6:Divider()
@@ -560,7 +570,7 @@ local PP = false
 pcall(function() WI:SetTheme("Dark") end)
 S.ParticleColor = getThemeColor("Dark")
 WI:Popup({
-    Title = "🍔 汉堡自动脚本 v2.1",
+    Title = "🍔 汉堡自动脚本 v2.2",
     Content = "⚔️ 自动杀死NPC(全杀模式)\n🧹 自动粉碎尸体\n🍔 自动做汉堡\n💰 自动收集金钱\n👁 NPC透视\n\n⚠️ 所有功能默认关闭",
     Buttons = {{Title = "确认加载", Callback = function() PP = true end, Variant = "Primary"}}
 })
