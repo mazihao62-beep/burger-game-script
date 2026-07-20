@@ -1,8 +1,9 @@
--- 汉堡游戏自动脚本 v2.7.0
+-- 汉堡游戏自动脚本 v2.8.0
 -- 作者: b站英吉利超入_
 -- ❌ 移除做汉堡功能
--- 🔧 粒子: 全屏ScreenGui (对齐WindUI模板v6.6方案)
+-- 🔧 粒子: 全屏ScreenGui (对齐WindUI模板v6.7方案)
 -- 🔧 毛玻璃溢出修复: ClipsDescendants
+-- 🔧 v2.8.0: +配置管理(ConfigManager) +SideBarWidth +透明(TransparencyValue)
 
 local P = game:GetService("Players")
 local WS = game:GetService("Workspace")
@@ -10,7 +11,6 @@ local RS = game:GetService("ReplicatedStorage")
 local UIS = game:GetService("UserInputService")
 local CS = game:GetService("CollectionService")
 local C = game:GetService("CoreGui")
-local RSvc = game:GetService("RunService")
 
 local LP = nil
 for i = 1, 50 do LP = P.LocalPlayer; if LP then break end; task.wait(0.1) end
@@ -36,14 +36,14 @@ local function loadRemotes()
     end)
     if ok and MeleeEvent and PickupEvent and DropEvent then
         remotesReady = true
-        print("[Burger v2.7.0] 远程OK: Melee/Pickup/Drop/Sack/Unstore")
+        print("[Burger v2.8.0] 远程OK: Melee/Pickup/Drop/Sack/Unstore")
         if SackStorage then
             local names = {}
             for _, v in ipairs(SackStorage:GetChildren()) do table.insert(names, v.Name) end
-            print("[Burger v2.7.0] SackStorage:" .. (#names > 0 and table.concat(names, ", ") or " (空-动态)"))
+            print("[Burger v2.8.0] SackStorage:" .. (#names > 0 and table.concat(names, ", ") or " (空-动态)"))
         end
     else
-        warn("[Burger v2.7.0] ⚠ 远程事件缺失!")
+        warn("[Burger v2.8.0] ⚠ 远程事件缺失!")
     end
 end
 loadRemotes()
@@ -78,9 +78,8 @@ local S = {
 }
 local KB = { Window = "RightShift" }
 local WN, CT = nil, {}
-local PR = false  -- particle running flag
-local PS = {}     -- particle data
-local PC = nil    -- particle container frame
+local CF = "default"
+local PR = false; local PS = {}; local PC = nil
 
 -- ============ 工具 ============
 local function matchKW(name, list)
@@ -109,7 +108,6 @@ local function equip(tool)
     return true
 end
 
--- ============ 玩家判断 ============
 local function isMe(m)
     for _, p in ipairs(P:GetPlayers()) do if p.Character == m then return true end end
     return false
@@ -318,7 +316,6 @@ local function doGrindBody()
 
     print("[Grind] 尸体: " .. body.Name)
 
-    -- 方式1: Sack系统
     if remotesReady and StoreSackEvent and UnstoreSackEvent and SackStorage then
         local sack = getTool({"sack","bag","container","box"})
         equip(sack)
@@ -344,13 +341,9 @@ local function doGrindBody()
         print("[Grind] SackStorage空,备用")
     end
 
-    -- 方式2: PickupItem → DropItem (直接传Model)
     if remotesReady and PickupEvent and DropEvent then
         local bp = getPosPart(body)
-        if bp then
-            hrp.CFrame = bp.CFrame * CFrame.new(0, 0, 2)
-            task.wait(0.2)
-        end
+        if bp then hrp.CFrame = bp.CFrame * CFrame.new(0, 0, 2); task.wait(0.2) end
 
         local ok, err = pcall(function() PickupEvent:FireServer(body) end)
         print("[Grind] PickupItem(" .. body.Name .. ") " .. (ok and "✅" or "❌" .. tostring(err):sub(1, 60)))
@@ -408,7 +401,7 @@ local function doCollectMoney()
     return false, "无金钱"
 end
 
--- ============ 粒子系统 (采用WindUI模板v6.6方案: 全屏ScreenGui) ============
+-- ============ 粒子系统 (全屏ScreenGui) ============
 local function startParticles()
     if PR then return end
     if PC then pcall(function() local p = PC.Parent; if p then p:Destroy() end end); PC = nil end
@@ -417,17 +410,10 @@ local function startParticles()
     task.wait(0.3)
     local sg = Instance.new("ScreenGui")
     sg.Name = "BurgerParticle_SG"
-    sg.ResetOnSpawn = false
-    sg.DisplayOrder = 999999
-    sg.IgnoreGuiInset = true
-    sg.Parent = C
+    sg.ResetOnSpawn = false; sg.DisplayOrder = 999999; sg.IgnoreGuiInset = true; sg.Parent = C
 
     PC = Instance.new("Frame")
-    PC.Size = UDim2.new(1, 0, 1, 0)
-    PC.BackgroundTransparency = 1
-    PC.BorderSizePixel = 0
-    PC.Active = false
-    PC.Parent = sg
+    PC.Size = UDim2.new(1, 0, 1, 0); PC.BackgroundTransparency = 1; PC.BorderSizePixel = 0; PC.Active = false; PC.Parent = sg
 
     local col = S.ParticleColor
     for i = 1, 50 do
@@ -437,18 +423,10 @@ local function startParticles()
         local sx = 0.2 + math.random() * 0.6
         local sy = 0.2 + math.random() * 0.6
         d.Position = UDim2.new(sx, 0, sy, 0)
-        d.BackgroundColor3 = col
-        d.BackgroundTransparency = 0.3 + math.random() * 0.5
-        d.BorderSizePixel = 0
-        d.Parent = PC
+        d.BackgroundColor3 = col; d.BackgroundTransparency = 0.3 + math.random() * 0.5; d.BorderSizePixel = 0; d.Parent = PC
         Instance.new("UICorner", d).CornerRadius = UDim.new(0, 10)
-        local a = math.random() * 6.28
-        local sp = 0.0008 + math.random() * 0.002
-        table.insert(PS, {
-            F = d, Sx = sx, Sy = sy,
-            Vx = math.cos(a) * sp, Vy = math.sin(a) * sp,
-            Ph = math.random() * 6.28, Sz = sz
-        })
+        local a = math.random() * 6.28; local sp = 0.0008 + math.random() * 0.002
+        table.insert(PS, {F = d, Sx = sx, Sy = sy, Vx = math.cos(a) * sp, Vy = math.sin(a) * sp, Ph = math.random() * 6.28, Sz = sz})
     end
 
     PR = true
@@ -480,10 +458,7 @@ end
 
 local function stopParticles()
     PR = false
-    if PC then
-        pcall(function() local p = PC.Parent; if p then p:Destroy() end end)
-        PC = nil
-    end
+    if PC then pcall(function() local p = PC.Parent; if p then p:Destroy() end end); PC = nil end
     PS = {}
 end
 
@@ -555,7 +530,8 @@ local function makeWindow()
     WN = WI:CreateWindow({
         Title = "🍔 汉堡自动脚本", Author = "b站英吉利超入_", Icon = "solar:hamburger-bold",
         Size = UDim2.fromOffset(750, 520), ToggleKey = Enum.KeyCode.RightShift,
-        Folder = "burger-script", Acrylic = true, Resizable = false,
+        Folder = "burger-script", Acrylic = true, Transparent = true,
+        SideBarWidth = 180, Resizable = false,
         ScrollBarEnabled = true, HideSearchBar = true,
         OnClose = function()
             stopParticles()
@@ -571,19 +547,19 @@ local function makeWindow()
         end
     })
 
-    -- 🔑 修复毛玻璃溢出: ClipsDescendants
     task.spawn(function()
         task.wait(0.8)
         pcall(function()
             if WN and WN.Parent then
                 WN.Parent.ClipsDescendants = true
-                print("[Burger v2.7.0] ✅ ClipsDescendants已应用(毛玻璃裁剪)")
+                print("[Burger v2.8.0] ✅ ClipsDescendants已应用(毛玻璃裁剪)")
             end
         end)
     end)
 
     task.spawn(function() task.wait(0.5); pcall(function() WN:SetToggleKey(Enum.KeyCode.RightShift) end) end)
 
+    -- Tab 1: 主控面板
     local t1 = WN:Tab({Title = "主控面板", Icon = "solar:slider-vertical-bold"})
     CT.KillNPC = t1:Toggle({Flag = "KillNPC", Title = "自动杀死NPC(爆头)", Value = false, Callback = function(v) S.KillNPC = v end})
     CT.GrindBodies = t1:Toggle({Flag = "GrindBodies", Title = "自动粉碎尸体", Value = false, Callback = function(v) S.GrindBodies = v end})
@@ -594,11 +570,13 @@ local function makeWindow()
     t1:Divider()
     CT.KillRange = t1:Slider({Flag = "KillRange", Title = "攻击范围", Step = 5, Value = {Min = 5, Max = 200, Default = 50}, Width = 200, IsTextbox = true, Callback = function(v) S.KillRange = v end})
 
+    -- Tab 2: 功能设置
     local t2 = WN:Tab({Title = "功能设置", Icon = "solar:settings-bold"})
     t2:Keybind({Flag = "KillKey", Title = "杀NPC快捷键", Value = "", Callback = function(v) KB.Kill = v end})
     t2:Keybind({Flag = "GrindKey", Title = "粉碎快捷键", Value = "", Callback = function(v) KB.Grind = v end})
     t2:Keybind({Flag = "MoneyKey", Title = "收钱快捷键", Value = "", Callback = function(v) KB.Money = v end})
 
+    -- Tab 3: UI设置
     local t3 = WN:Tab({Title = "UI设置", Icon = "solar:monitor-bold"})
     t3:Keybind({Flag = "WindowKey", Title = "窗口快捷键", Value = "RightShift", Callback = function(v) KB.Window = v end})
     t3:Divider()
@@ -607,29 +585,66 @@ local function makeWindow()
         if v then startParticles() else stopParticles() end
     end})
     CT.Acrylic = t3:Toggle({Flag = "Acrylic", Title = "毛玻璃", Value = true, Callback = function(v) S.Acrylic = v; pcall(function() WI:ToggleAcrylic(v) end) end})
-    CT.Transparent = t3:Toggle({Flag = "Transparent", Title = "透明背景", Value = false, Callback = function(v) S.Transparent = v; pcall(function() WN:ToggleTransparency(v) end) end})
+    CT.Transparent = t3:Toggle({Flag = "Transparent", Title = "透明背景", Value = false, Callback = function(v) S.Transparent = v; WI.TransparencyValue = v and 0.15 or 0 end})
     local tns = {"Dark","Light","Rose","Plant","Ocean","Sunset","Midnight","Forest","Lavender","Coral","Mint","Sky","Blood","Lemon","Cyber"}
     CT.Theme = t3:Dropdown({Flag = "Theme", Title = "选择主题", Values = tns, Value = "Dark", Callback = function(v)
         pcall(function() WI:SetTheme(v) end); S.ParticleColor = tc(v)
     end})
 
+    -- Tab 4: 信息统计
     local t4 = WN:Tab({Title = "信息统计", Icon = "solar:chart-bold"})
     local npcP = t4:Paragraph({Title = "👤 NPC: 0"})
     local bodyP = t4:Paragraph({Title = "🦴 尸体: 0"})
     local moneyP = t4:Paragraph({Title = "💰 金钱: 0"})
 
+    -- Tab 5: 配置管理 (接入 WindUI ConfigManager)
     local t5 = WN:Tab({Title = "配置管理", Icon = "solar:diskette-bold"})
-    t5:Input({Flag = "CN", Title = "配置名称", Value = "default", Icon = "solar:file-text-bold", Callback = function(v) end})
-    t5:Button({Title = "💾 保存", Icon = "solar:check-circle-bold", Justify = "Center", Color = Color3.fromHex("#305dff"), Callback = function() end})
-    t5:Button({Title = "📂 加载", Icon = "solar:refresh-circle-bold", Justify = "Center", Color = Color3.fromHex("#10C550"), Callback = function() end})
-    t5:Button({Title = "🗑️ 删除", Icon = "solar:trash-bin-trash-bold", Justify = "Center", Color = Color3.fromHex("#ff3040"), Callback = function() end})
+    local CM = WN.ConfigManager
+    local cni = t5:Input({Flag = "CN", Title = "配置名称", Value = CF, Icon = "solar:file-text-bold", Callback = function(v) CF = v end})
+    t5:Space()
+    local AC = {}
+    pcall(function() AC = CM:AllConfigs() end)
+    local DV = nil
+    pcall(function() for _, v in ipairs(AC) do if v == CF then DV = CF; break end end end)
+    local ACD = t5:Dropdown({Title = "已有配置", Values = AC, Value = DV, Callback = function(v) if v then CF = v; cni:Set(v) end end})
+    t5:Space()
+    t5:Button({Title = "💾 保存", Icon = "solar:check-circle-bold", Justify = "Center", Color = Color3.fromHex("#305dff"),
+        Callback = function()
+            if not CM then return end
+            local c = CM:Config(CF)
+            if c and c:Save() then
+                WI:Notify({Title = "✅ 已保存", Content = "配置 '" .. CF .. "'", Duration = 3, Icon = "solar:check-circle-bold"})
+                ACD:Refresh(CM:AllConfigs())
+            end
+        end})
+    t5:Space()
+    t5:Button({Title = "📂 加载", Icon = "solar:refresh-circle-bold", Justify = "Center", Color = Color3.fromHex("#10C550"),
+        Callback = function()
+            if not CM then return end
+            local c = CM:CreateConfig(CF, false)
+            if c and c:Load() then
+                WI:Notify({Title = "✅ 已加载", Content = "配置 '" .. CF .. "'", Duration = 3, Icon = "solar:refresh-circle-bold"})
+            end
+        end})
+    t5:Space()
+    t5:Button({Title = "🗑️ 删除", Icon = "solar:trash-bin-trash-bold", Justify = "Center", Color = Color3.fromHex("#ff3040"),
+        Callback = function()
+            if not CM then return end
+            local c = CM:Config(CF)
+            if c and c:Delete() then
+                WI:Notify({Title = "🗑️ 已删除", Content = "配置 '" .. CF .. "'", Duration = 3, Icon = "solar:trash-bin-trash-bold"})
+                ACD:Refresh(CM:AllConfigs())
+            end
+        end})
+    task.spawn(function() task.wait(1); pcall(function() CM:CreateConfig("default", true) end) end)
 
+    -- Tab 6: 关于
     local t6 = WN:Tab({Title = "关于", Icon = "solar:info-square-bold"})
-    t6:Paragraph({Title = "汉堡自动脚本 v2.7.0"})
+    t6:Paragraph({Title = "汉堡自动脚本 v2.8.0"})
     t6:Divider()
     t6:Paragraph({Title = "👤 作者", Desc = "b站英吉利超入_"})
     t6:Paragraph({Title = "💡 使用", Desc = IM and "手机:点击悬浮按钮" or "PC: RightShift打开菜单"})
-    t6:Paragraph({Title = "🔧 v2.7.0", Desc = "- 移除做汉堡功能\n+ 粒子:全屏ScreenGui\n+ 毛玻璃溢出修复(ClipsDescendants)"})
+    t6:Paragraph({Title = "🔧 v2.8.0", Desc = "+ 配置管理(保存/加载/删除)\n+ SideBarWidth=180\n+ 透明(WI.TransparencyValue)\n❌ 移除做汉堡"})
 
     UIS.InputBegan:Connect(function(input, gpe)
         if gpe or input.UserInputType ~= Enum.UserInputType.Keyboard then return end
@@ -647,8 +662,8 @@ local PP = false
 pcall(function() WI:SetTheme("Dark") end)
 S.ParticleColor = tc("Dark")
 WI:Popup({
-    Title = "🍔 汉堡自动脚本 v2.7.0",
-    Content = "❌ 已移除做汉堡\n🌀 粒子全屏重写\n✂️ 毛玻璃裁剪修复\n\n杀NPC | 粉碎 | 收钱",
+    Title = "🍔 汉堡自动脚本 v2.8.0",
+    Content = "❌ 已移除做汉堡\n🌀 粒子全屏重写\n✂️ 毛玻璃裁剪修复\n💾 配置管理\n\n杀NPC | 粉碎 | 收钱",
     Buttons = {{Title = "确认加载", Callback = function() PP = true end, Variant = "Primary"}}
 })
 while not PP do task.wait(0.1) end
@@ -656,8 +671,8 @@ while not PP do task.wait(0.1) end
 local function mainLoop()
     local npcP, bodyP, moneyP = makeWindow()
     WI:Notify({
-        Title = "🍔 汉堡 v2.7.0",
-        Content = "无汉堡 | 粒子重写 | 玻璃裁剪\n远程:" .. (remotesReady and "✅" or "⚠"),
+        Title = "🍔 汉堡 v2.8.0",
+        Content = "配置保存 | 透明修复 | 玻璃裁剪\n远程:" .. (remotesReady and "✅" or "⚠"),
         Duration = 3, Icon = "solar:bell-bold"
     })
     local last = 0
